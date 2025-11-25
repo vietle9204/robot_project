@@ -1,0 +1,74 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- IMU Plugin -->
+  <gazebo>
+    <plugin
+      filename="libgz-sim8-imu-system.so"
+      name="gz::sim::systems::Imu"/>
+  </gazebo>
+
+  <!-- Pose Publisher -->
+  <gazebo>
+    <plugin
+      filename="libgz-sim8-pose-publisher-system.so"
+      name="gz::sim::systems::PosePublisher">
+      <publish_link_pose>true</publish_link_pose>
+      <publish_collision_pose>false</publish_collision_pose>
+      <publish_visual_pose>false</publish_visual_pose>
+      <publish_nested_model_pose>true</publish_nested_model_pose>
+      <use_pose_vector_msg>true</use_pose_vector_msg>
+      <static_publisher>true</static_publisher>
+      <static_update_frequency>100</static_update_frequency>
+    </plugin>
+  </gazebo>
+
+  <!-- Odometry Publisher -->
+  <gazebo>
+    <plugin
+      filename="libgz-sim8-odometry-publisher-system.so"
+      name="gz::sim::systems::OdometryPublisher">
+      <odom_topic>odom</odom_topic>
+      <odom_frame>odom</odom_frame>
+      <robot_base_frame>base_link</robot_base_frame>
+      <odom_publish_frequency>50</odom_publish_frequency>
+      <xyz_offset>0 0 0</xyz_offset>
+      <rpy_offset>0 0 0</rpy_offset>
+    </plugin>
+  </gazebo>
+
+  <!-- Diff Drive -->
+  <gazebo>
+    <plugin
+      filename="libgz-sim8-diff-drive-system.so"
+      name="gz::sim::systems::DiffDrive">
+      
+      <!-- Wheel info -->
+      <left_joint>left_wheel_joint</left_joint>
+      <right_joint>right_wheel_joint</right_joint>
+      <wheel_separation>0.175</wheel_separation>
+      <wheel_radius>0.0325</wheel_radius>
+      
+      <!-- Topic -->
+      <topic>cmd_vel</topic>
+      
+      <!-- Frame -->
+      <frame_id>odom</frame_id>
+      <child_frame_id>base_link</child_frame_id>
+      
+      <!-- Publish TF -->
+      <tf_topic>/tf</tf_topic>
+      <publish_odom>true</publish_odom>
+      <publish_odom_tf>false</publish_odom_tf>
+      <publish_wheel_tf>false</publish_wheel_tf>
+    </plugin>
+  </gazebo>
+
+  <!-- Joint State Publisher -->
+  <gazebo>
+    <plugin
+      filename="libgz-sim8-joint-state-publisher-system.so"
+      name="gz::sim::systems::JointStatePublisher"/>
+  </gazebo>
+
+</robot>
