@@ -3,6 +3,8 @@ from launch.actions import DeclareLaunchArgument , TimerAction
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Command
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+from ament_index_python.packages import get_package_share_directory
+import os
 
 def generate_launch_description():
     urdf_pkg_path = FindPackageShare('my_robot_model')
@@ -15,6 +17,10 @@ def generate_launch_description():
     ])
         
     robot_desc = Command(['xacro ', PathJoinSubstitution([urdf_pkg_path, 'description', LaunchConfiguration('robot_model')])])
+
+    config_file_path = os.path.join(
+                get_package_share_directory("odom_to_tf"), "config", "odom_to_tf.yaml"
+            )
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -65,5 +71,14 @@ def generate_launch_description():
                 arguments=['-d', rviz_config],
                 parameters=[{'use_sim_time': True}]
             )
-        ])
+        ]),
+
+        Node(
+            package="odom_to_tf",
+            executable="odom_to_tf",
+            name="odom_to_tf",
+            output="screen",
+            parameters=[config_file_path],
+            remappings=[],
+        )
     ])

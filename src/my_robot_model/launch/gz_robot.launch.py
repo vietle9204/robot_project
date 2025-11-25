@@ -81,7 +81,7 @@ def generate_launch_description():
 
                     '/model/robot_2wd/odometry@nav_msgs/msg/Odometry[gz.msgs.Odometry',
 
-                    '/cmd_vel@geometry_msgs/msg/Twist@gz.msgs.Twist',
+                    '/cmd_vel@geometry_msgs/msg/TwistStamped@gz.msgs.Twist',
                 ],
                 output='screen',
                 remappings=[('/model/robot_2wd/odometry', '/odometry/data')]

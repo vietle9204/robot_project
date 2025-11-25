@@ -62,11 +62,11 @@ private:
     }
     if (not inverse_tf_)
     {
-      // tfs_.header.frame_id = frame_id_ != "" ? frame_id_ : msg->header.frame_id;
-      // tfs_.child_frame_id = child_frame_id_ != "" ? child_frame_id_ : msg->child_frame_id;
-      tfs_.header.stamp = msg->header.stamp;
-      tfs_.header.frame_id = frame_id_;
-      tfs_.child_frame_id = child_frame_id_;
+      tfs_.header.frame_id = frame_id_ != "" ? frame_id_ : msg->header.frame_id;
+      tfs_.child_frame_id = child_frame_id_ != "" ? child_frame_id_ : msg->child_frame_id;
+      // tfs_.header.stamp = msg->header.stamp;
+      // tfs_.header.frame_id = frame_id_;
+      // tfs_.child_frame_id = child_frame_id_;
       tfs_.transform.translation.x = msg->pose.pose.position.x;
       tfs_.transform.translation.y = msg->pose.pose.position.y;
       tfs_.transform.translation.z = msg->pose.pose.position.z;
