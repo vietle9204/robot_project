@@ -8,13 +8,13 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     config_file_path = os.path.join(
-        get_package_share_directory("odom_to_tf_ros2"), "config", "odom_to_tf.yaml"
+        get_package_share_directory("odom_to_tf"), "config", "odom_to_tf.yaml"
     )
 
     return LaunchDescription(
         [
             Node(
-                package="odom_to_tf_ros2",
+                package="odom_to_tf",
                 executable="odom_to_tf",
                 name="odom_to_tf",
                 output="screen",
