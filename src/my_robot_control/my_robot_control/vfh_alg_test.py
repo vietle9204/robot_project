@@ -28,14 +28,14 @@ class VFHNode(Node):
         # publisher
         self.cmd_pub = self.create_publisher(TwistStamped, self.cmd_vel_topic, 10)
 
+        # parameters
+        self.timer = self.create_timer(0.1, self.control_loop)  # 10 Hz
+        self.prev_angle = 0.0
+
         # state
         self.scan = None
         self.odom = None
         self.goal = None
-
-        # parameters
-        self.timer = self.create_timer(0.1, self.control_loop)  # 10 Hz
-        self.prev_angle = 0.0
 
         self.get_logger().info("VFH controller node initialized.")
 
@@ -46,7 +46,7 @@ class VFHNode(Node):
         self.declare_parameter('cmd_vel_topic', '/cmd_vel')
 
         # robot parameter
-        self.declare_parameter('safety_dist', 0.15)
+        self.declare_parameter('safety_dist', 0.2)
         self.declare_parameter('influence_dist', 1.0)
         self.declare_parameter('max_speed', 1.0)
         self.declare_parameter('max_omega', 1.0)
@@ -59,7 +59,7 @@ class VFHNode(Node):
         self.declare_parameter('w_obs', 2.0)
         self.declare_parameter('w_turn', 0.5)
         self.declare_parameter('neighbor_range', 10)        #so sector hai ben
-        self.declare_parameter('neighbor_penalty_base', 3.0)
+        self.declare_parameter('neighbor_penalty_base', 4.0)
         self.declare_parameter('neighbor_penalty_step', 0.6)
 
     def load_parameters(self):
@@ -77,6 +77,7 @@ class VFHNode(Node):
         self.sector_count = self.get_parameter('sector_count').value
         self.goal_tolerance = self.get_parameter('goal_tolerance').value
 
+        # cost parameters
         self.w_goal = self.get_parameter('w_goal').value
         self.w_obs = self.get_parameter('w_obs').value
         self.w_turn = self.get_parameter('w_turn').value
@@ -120,6 +121,7 @@ class VFHNode(Node):
             twist = TwistStamped()
             self.cmd_pub.publish(twist)
             self.get_logger().info("Goal reached.")
+            self.goal = None  # clear goal
             return
 
         # angle to goal in robot frame
@@ -199,7 +201,7 @@ class VFHNode(Node):
             # scale 0..1
             front_penalty = min(1.0, (front_min - self.safety_dist) / (self.influence_dist - self.safety_dist + 1e-6))
 
-        linear = self.max_speed * front_penalty * math.exp(-abs(angular_error)*2)
+        linear = self.max_speed * front_penalty * math.exp(-abs(angular_error)*3)
 
         # slow as we approach goal
         linear = linear * min(1.0, dist_to_goal / 1.0)

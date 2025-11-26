@@ -38,7 +38,7 @@ def generate_launch_description():
 
     # --- Launch Gazebo ---
     gz_process = TimerAction(
-        period=2.0,
+        period=5.0,
         actions=[
             ExecuteProcess(
                 cmd=['gz', 'sim', world_path],
@@ -54,7 +54,7 @@ def generate_launch_description():
             ExecuteProcess(
                 cmd=['ros2', 'run', 'ros_gz_sim', 'create',
                     '-topic', 'robot_description',
-                    '-name', 'robot_2wd',
+                    '-name', 'my_robot',
                     '-x', '-5.0',
                     '-y', '-5.0'],
                 output='screen'
@@ -64,7 +64,7 @@ def generate_launch_description():
 
     # bridge between ROS2 and Gazebo
     node_gz_bridge = TimerAction(
-        period=7.0,
+        period=10.0,
         actions=[
             Node(
                 package='ros_gz_bridge',
@@ -79,12 +79,16 @@ def generate_launch_description():
                     '/camera/image_raw@sensor_msgs/msg/Image[gz.msgs.Image',
                     '/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
 
-                    '/model/robot_2wd/odometry@nav_msgs/msg/Odometry[gz.msgs.Odometry',
+                    # '/model/my_robot/odometry@nav_msgs/msg/Odometry[gz.msgs.Odometry',
 
                     '/cmd_vel@geometry_msgs/msg/TwistStamped@gz.msgs.Twist',
+
+                    '/world/simple_room/model/my_robot/joint_state@sensor_msgs/msg/JointState@gz.msgs.Model'
+
                 ],
                 output='screen',
-                remappings=[('/model/robot_2wd/odometry', '/odometry/data')]
+                remappings=[#('/model/my_robot/odometry', '/odometry/data'),
+                            ('/world/simple_room/model/my_robot/joint_state', '/joint_states')]
             )
         ]
     )

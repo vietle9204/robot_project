@@ -45,18 +45,34 @@ def generate_launch_description():
             }],
         ),
         
-        # joint state publisher
-        TimerAction(
-            period=3.0,  # đợi 2 giây cho robot_state_publisher publish
-            actions=[
-                Node(
-                    package='my_robot_model',
-                    executable='wheel_odom_publisher.py',
-                    name='wheel_odom_publisher',
-                    output='screen',
-                    parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
-                )
-            ]
+        # # joint state publisher
+        # TimerAction(
+        #     period=3.0,  # đợi 2 giây cho robot_state_publisher publish
+        #     actions=[
+        #         Node(
+        #             package='my_robot_model',
+        #             executable='wheel_odom_publisher.py',
+        #             name='wheel_odom_publisher',
+        #             output='screen',
+        #             parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
+        #         )
+        #     ]
+        # ),
+
+        
+        # Node(
+        #     package='my_robot_kinematic',
+        #     executable='joint_state_publisher',
+        #     name='joint_state_publisher',
+        #     output='screen',
+        # ),
+
+        Node(
+            package='my_robot_kinematic',
+            executable='odometry_publisher',
+            name='odometry_publisher',
+            output='screen',
+            # parameters=[LaunchConfiguration('use_sim_time')]
         ),
         
         # RViz
@@ -74,11 +90,11 @@ def generate_launch_description():
         ]),
 
         Node(
-            package="odom_to_tf",
-            executable="odom_to_tf",
-            name="odom_to_tf",
-            output="screen",
-            parameters=[config_file_path],
-            remappings=[],
+                package="odom_to_tf",
+                executable="odom_to_tf",
+                name="odom_to_tf",
+                output="screen",
+                parameters=[config_file_path],
+                remappings=[],
         )
     ])
