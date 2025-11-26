@@ -6,6 +6,13 @@ from rclpy.node import Node
 from sensor_msgs.msg import LaserScan, Imu
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped, TwistStamped
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
+
+qos = QoSProfile(
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    durability=DurabilityPolicy.VOLATILE,
+    depth=10
+)
 
 def normalize_angle(a):
     a = (a + math.pi) % (2 * math.pi) - math.pi
@@ -21,12 +28,12 @@ class VFHNode(Node):
         self.load_parameters()
 
         # subscribers
-        self.create_subscription(LaserScan, self.scan_topic, self.scan_cb, 10)
-        self.create_subscription(Odometry, self.odom_topic, self.odom_cb, 10)
+        self.create_subscription(LaserScan, self.scan_topic, self.scan_cb, qos)
+        self.create_subscription(Odometry, self.odom_topic, self.odom_cb, qos)
         self.create_subscription(PoseStamped, self.goal_topic, self.goal_cb, 10)
         
         # publisher
-        self.cmd_pub = self.create_publisher(TwistStamped, self.cmd_vel_topic, 10)
+        self.cmd_pub = self.create_publisher(TwistStamped, self.cmd_vel_topic, qos)
 
         # parameters
         self.timer = self.create_timer(0.1, self.control_loop)  # 10 Hz
@@ -213,6 +220,7 @@ class VFHNode(Node):
             omega = 0.0 
 
         twist = TwistStamped()
+        twist.header.stamp = self.odom.header.stamp
         twist.twist.linear.x = float(linear)
         twist.twist.angular.z = float(omega)
         self.cmd_pub.publish(twist)

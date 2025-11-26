@@ -45,34 +45,41 @@ def generate_launch_description():
             }],
         ),
         
-        # # joint state publisher
-        # TimerAction(
-        #     period=3.0,  # đợi 2 giây cho robot_state_publisher publish
-        #     actions=[
-        #         Node(
-        #             package='my_robot_model',
-        #             executable='wheel_odom_publisher.py',
-        #             name='wheel_odom_publisher',
-        #             output='screen',
-        #             parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
-        #         )
-        #     ]
-        # ),
+        # # # joint state publisher
+        # # TimerAction(
+        # #     period=3.0,  # đợi 2 giây cho robot_state_publisher publish
+        # #     actions=[
+        # #         Node(
+        # #             package='my_robot_model',
+        # #             executable='wheel_odom_publisher.py',
+        # #             name='wheel_odom_publisher',
+        # #             output='screen',
+        # #             parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
+        # #         )
+        # #     ]
+        # # ),
 
-        
+
         # Node(
         #     package='my_robot_kinematic',
-        #     executable='joint_state_publisher',
-        #     name='joint_state_publisher',
+        #     executable='odometry_publisher',
+        #     name='odometry_publisher',
         #     output='screen',
+        #     # parameters=[LaunchConfiguration('use_sim_time')]
         # ),
 
         Node(
             package='my_robot_kinematic',
-            executable='odometry_publisher',
-            name='odometry_publisher',
+            executable='odom_from_vel_encoder',
+            name='odom_from_vel_encoder',
             output='screen',
-            # parameters=[LaunchConfiguration('use_sim_time')]
+        ),
+        
+        Node(
+            package='my_robot_kinematic',
+            executable='jointState_from_vel_encoder',
+            name='jointState_from_vel_encoder',
+            output='screen',
         ),
         
         # RViz
@@ -85,7 +92,7 @@ def generate_launch_description():
                 name='rviz2',
                 output='screen',
                 arguments=['-d', rviz_config],
-                parameters=[{'use_sim_time': True}]
+                parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
             )
         ]),
 

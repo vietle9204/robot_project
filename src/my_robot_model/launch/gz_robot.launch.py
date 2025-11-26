@@ -88,10 +88,19 @@ def generate_launch_description():
                 ],
                 output='screen',
                 remappings=[#('/model/my_robot/odometry', '/odometry/data'),
-                            ('/world/simple_room/model/my_robot/joint_state', '/joint_states')]
+                            ('/world/simple_room/model/my_robot/joint_state', '/joint_states_raw')
+                ]
+            ),
+            Node(
+                package='my_robot_kinematic',
+                executable='gz_vel_encoder_fake',
+                name='gz_vel_encoder_fake',
+                output='screen',
             )
         ]
     )
+
+
 
     return LaunchDescription([
         declare_use_sim_time,

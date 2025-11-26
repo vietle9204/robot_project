@@ -144,8 +144,6 @@ Visualization Manager:
           Value: true
         left_wheel:
           Value: true
-        map:
-          Value: true
         odom:
           Value: true
         right_wheel:
@@ -156,28 +154,27 @@ Visualization Manager:
       Show Axes: true
       Show Names: true
       Tree:
-        map:
-          odom:
-            base_link:
-              base_footprint:
-                {}
-              chassis:
-                camera_link:
-                  camera_link_optical:
-                    {}
-                caster_wheel:
+        odom:
+          base_link:
+            base_footprint:
+              {}
+            chassis:
+              camera_link:
+                camera_link_optical:
                   {}
-                depth_camera_link:
-                  depth_camera_link_optical:
-                    {}
-                imu_link:
-                  {}
-                laser:
-                  {}
-              left_wheel:
+              caster_wheel:
                 {}
-              right_wheel:
+              depth_camera_link:
+                depth_camera_link_optical:
+                  {}
+              imu_link:
                 {}
+              laser:
+                {}
+            left_wheel:
+              {}
+            right_wheel:
+              {}
       Update Interval: 0
       Value: true
     - Alpha: 1
@@ -202,7 +199,7 @@ Visualization Manager:
       Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 3
-      Size (m): 0.009999999776482582
+      Size (m): 0.029999999329447746
       Style: Flat Squares
       Topic:
         Depth: 5
@@ -320,7 +317,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 23.5752010345459
+      Distance: 14.137939453125
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -335,10 +332,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.5297963619232178
+      Pitch: 1.5697963237762451
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 2.5453975200653076
+      Yaw: 2.2303969860076904
     Saved: ~
 Window Geometry:
   Camera:

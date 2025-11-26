@@ -25,6 +25,9 @@ setup(
     entry_points={
         'console_scripts': [
             'odometry_publisher = my_robot_kinematic.odometry_publisher:main',
+            'gz_vel_encoder_fake = my_robot_kinematic.gz_vel_encoder_fake:main',
+            'odom_from_vel_encoder = my_robot_kinematic.odom_from_vel_encoder:main',
+            'jointState_from_vel_encoder = my_robot_kinematic.jointState_from_vel_encoder:main',
         ],
     },
 )
