@@ -5,7 +5,7 @@
   <joint name="laser_joint" type="fixed">
     <parent link="chassis"/>
     <child link="laser"/>
-    <origin xyz="0.0 0 0.15" rpy="0 0 0"/>
+    <origin xyz="-0.05 0 0.15" rpy="0 0 ${pi}"/>
   </joint>
 
   <link name="laser">
@@ -24,7 +24,7 @@
       <origin xyz="0 0 0" rpy="0 0 0"/>
     </xacro:inertial_cylinder>
   </link>  
-
+        
   <gazebo reference="laser">
     <sensor name="laser" type="gpu_lidar">
       <topic>scan</topic>
@@ -53,52 +53,6 @@
       </lidar>
       <always_on>true</always_on>
       <visualize>true</visualize>
-    </sensor>
-  </gazebo>
-
-
-  <!-- IMU -->
-  <joint name="imu_joint" type="fixed">
-    <parent link="chassis"/>
-    <child link="imu_link"/>
-    <origin xyz="0 0 0.01" rpy="0 0 0"/>
-  </joint>
-
-  <link name="imu_link">
-    <visual>
-      <geometry>
-        <box size="0.02 0.02 0.01"/>
-      </geometry>
-      <material name="black"/>
-    </visual>
-    <collision>
-      <geometry>
-        <box size="0.02 0.02 0.01"/>
-      </geometry>
-    </collision>
-    <xacro:inertial_box mass="0.01" x="0.02" y="0.02" z="0.01">
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-    </xacro:inertial_box>
-  </link>
-
-  <gazebo reference="imu_link">
-    <sensor name="imu_sensor" type="imu">
-      <topic>imu</topic>
-      <update_rate>100</update_rate>
-      <always_on>true</always_on>
-      <visualize>true</visualize>
-      <imu>
-        <angular_velocity>
-          <x><noise type="gaussian"><mean>0.0</mean><stddev>2e-4</stddev></noise></x>
-          <y><noise type="gaussian"><mean>0.0</mean><stddev>2e-4</stddev></noise></y>
-          <z><noise type="gaussian"><mean>0.0</mean><stddev>2e-4</stddev></noise></z>
-        </angular_velocity>
-        <linear_acceleration>
-          <x><noise type="gaussian"><mean>0.0</mean><stddev>1.7e-2</stddev></noise></x>
-          <y><noise type="gaussian"><mean>0.0</mean><stddev>1.7e-2</stddev></noise></y>
-          <z><noise type="gaussian"><mean>0.0</mean><stddev>1.7e-2</stddev></noise></z>
-        </linear_acceleration>
-      </imu>
     </sensor>
   </gazebo>
 

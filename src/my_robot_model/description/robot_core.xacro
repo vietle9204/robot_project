@@ -19,9 +19,7 @@
 </material>
 
 <link name="base_link">
-   <visual>
-    <origin xyz="0 0 0.075"/>
-  </visual>
+  
 </link>
 
 <!-- BASE_FOOTPRINT LINK -->

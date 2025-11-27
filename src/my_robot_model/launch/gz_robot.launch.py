@@ -88,7 +88,8 @@ def generate_launch_description():
                 ],
                 output='screen',
                 remappings=[#('/model/my_robot/odometry', '/odometry/data'),
-                            ('/world/simple_room/model/my_robot/joint_state', '/joint_states_raw')
+                            ('/world/simple_room/model/my_robot/joint_state', '/joint_states_raw'),
+                            ('/imu', '/imu/data')
                 ]
             ),
             Node(

@@ -5,7 +5,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan, Imu
 from nav_msgs.msg import Odometry
-from geometry_msgs.msg import PoseStamped, TwistStamped
+from geometry_msgs.msg import PoseStamped, TwistStamped, Twist
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 
 qos = QoSProfile(
@@ -33,7 +33,10 @@ class VFHNode(Node):
         self.create_subscription(PoseStamped, self.goal_topic, self.goal_cb, 10)
         
         # publisher
-        self.cmd_pub = self.create_publisher(TwistStamped, self.cmd_vel_topic, qos)
+        if(self.use_Stamped):
+            self.cmd_pub = self.create_publisher(TwistStamped, self.cmd_vel_topic, 10)
+        else:
+            self.cmd_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
 
         # parameters
         self.timer = self.create_timer(0.1, self.control_loop)  # 10 Hz
@@ -44,6 +47,8 @@ class VFHNode(Node):
         self.odom = None
         self.goal = None
 
+        self.reverse_lidar = True    #cấu hình lidar ngược hướng với base_link
+
         self.get_logger().info("VFH controller node initialized.")
 
     def declare_param(self):
@@ -52,8 +57,10 @@ class VFHNode(Node):
         self.declare_parameter('goal_topic', '/goal_pose')
         self.declare_parameter('cmd_vel_topic', '/cmd_vel')
 
+        self.declare_parameter('use_Stamped', False)
+
         # robot parameter
-        self.declare_parameter('safety_dist', 0.2)
+        self.declare_parameter('safety_dist', 0.25)
         self.declare_parameter('influence_dist', 1.0)
         self.declare_parameter('max_speed', 1.0)
         self.declare_parameter('max_omega', 1.0)
@@ -75,6 +82,8 @@ class VFHNode(Node):
         self.odom_topic = self.get_parameter('odom_topic').value
         self.goal_topic = self.get_parameter('goal_topic').value
         self.cmd_vel_topic = self.get_parameter('cmd_vel_topic').value
+
+        self.use_Stamped = self.get_parameter('use_Stamped').value
 
         # VFH parameters
         self.safety_dist = self.get_parameter('safety_dist').value
@@ -125,7 +134,12 @@ class VFHNode(Node):
         dist_to_goal = math.hypot(dx, dy)
         if dist_to_goal < self.goal_tolerance:
             # reached
-            twist = TwistStamped()
+            if self.use_Stamped:
+                twist = TwistStamped()
+                twist.header.stamp = self.get_clock().now().to_msg()
+            else:
+                twist = Twist()
+
             self.cmd_pub.publish(twist)
             self.get_logger().info("Goal reached.")
             self.goal = None  # clear goal
@@ -137,13 +151,22 @@ class VFHNode(Node):
 
         # prepare sectors
         scan = self.scan
-        ranges = np.array(scan.ranges, dtype=np.float32)
-        # replace inf/nan
+        if self.reverse_lidar:
+            scan.angle_min = 0.0                #theo góc nhìn của base_link
+            scan.angle_max = 2.0 * math.pi 
+
+        ranges = np.array(scan.ranges, dtype=np.float32)    # replace inf/nan
         ranges = np.where(np.isfinite(ranges), ranges, scan.range_max)
         angles = np.linspace(scan.angle_min, scan.angle_max, ranges.size)
+        if self.reverse_lidar:
+            # angles = np.where(angles > math.pi, angles - 2*math.pi, angles) # normalize to [-pi, pi]
+            angles = (angles + np.pi) % (2 * np.pi) - np.pi
 
         # build histogram
         sector_angles = np.linspace(scan.angle_min, scan.angle_max, self.sector_count)
+        if self.reverse_lidar:
+            # sector_angles = np.where(sector_angles > math.pi, sector_angles - 2*math.pi, sector_angles) # normalize to [-pi, pi]
+            sector_angles = (sector_angles + np.pi) % (2 * np.pi) - np.pi
         sector_width = (sector_angles[1] - sector_angles[0]) if self.sector_count > 1 else (scan.angle_max - scan.angle_min)
         hist = np.zeros(self.sector_count, dtype=np.float32)
 
@@ -184,8 +207,12 @@ class VFHNode(Node):
                     penalty = self.neighbor_penalty_base * (self.neighbor_penalty_step ** (offset - 1))  # giảm 15% mỗi bước
                     if i - offset >= 0:
                         costs[i - offset] += penalty
+                    else:
+                        costs[i - offset + len(costs)] += penalty
                     if i + offset < len(costs):
                         costs[i + offset] += penalty
+                    else:
+                        costs[i + offset - len(costs)] += penalty
 
         # pick best sector with minimum cost
         best_idx = int(np.argmin(costs))
@@ -219,11 +246,18 @@ class VFHNode(Node):
         if abs(omega) < 0.01:
             omega = 0.0 
 
-        twist = TwistStamped()
-        twist.header.stamp = self.odom.header.stamp
-        twist.twist.linear.x = float(linear)
-        twist.twist.angular.z = float(omega)
-        self.cmd_pub.publish(twist)
+        if self.use_Stamped:
+            twist = TwistStamped()
+            twist.header.stamp = self.get_clock().now().to_msg()
+            twist.twist.linear.x = float(linear)
+            twist.twist.angular.z = float(omega)
+            self.cmd_pub.publish(twist)
+        else:
+            twist = Twist()
+            twist.linear.x = float(linear)
+            twist.angular.z = float(omega)
+            self.cmd_pub.publish(twist)
+
         self.get_logger().info(f"VFH command: linear={linear:.2f}, angular={omega:.2f}")    
 
 

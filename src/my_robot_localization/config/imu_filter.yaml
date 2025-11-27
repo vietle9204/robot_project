@@ -1,0 +1,14 @@
+imu_filter:
+  ros__parameters:
+    imu0: /imu/data             # topic IMU thô của bạn
+    frequency: 20.0
+    frame_id: base_link
+    use_mag: false               # false nếu IMU không có magnetometer
+    publish_tf: true
+    fixed_frame: odom
+    world_frame: odom
+    gain: 0.1
+    zeta: 0.0
+    mag_bias_x: 0.0
+    mag_bias_y: 0.0
+    mag_bias_z: 0.0
