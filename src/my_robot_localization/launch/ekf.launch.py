@@ -19,7 +19,7 @@ def generate_launch_description():
         executable='complementary_filter_node',
         name='complementary_filter_gain_node',
         output='screen',
-        parameters=[imu_config],
+        parameters=[imu_config, {'publish_tf': False}],
         remappings=[
                 ('/imu/data_raw', '/imu/data'),               # input raw
                 ('/imu/data', '/imu/data_filtered')      # output filtered
@@ -43,7 +43,7 @@ def generate_launch_description():
 
     # Gộp lại
     ld = LaunchDescription()
-    ld.add_action(imu_node)
+    # ld.add_action(imu_node)
     ld.add_action(ekf_node)
 
     return ld

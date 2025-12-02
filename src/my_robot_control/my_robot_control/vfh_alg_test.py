@@ -157,6 +157,7 @@ class VFHNode(Node):
 
         ranges = np.array(scan.ranges, dtype=np.float32)    # replace inf/nan
         ranges = np.where(np.isfinite(ranges), ranges, scan.range_max)
+        ranges = np.where(ranges > 0.15, ranges, scan.range_max)
         angles = np.linspace(scan.angle_min, scan.angle_max, ranges.size)
         if self.reverse_lidar:
             # angles = np.where(angles > math.pi, angles - 2*math.pi, angles) # normalize to [-pi, pi]

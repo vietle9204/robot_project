@@ -81,7 +81,7 @@ def generate_launch_description():
 
                     # '/model/my_robot/odometry@nav_msgs/msg/Odometry[gz.msgs.Odometry',
 
-                    '/cmd_vel@geometry_msgs/msg/TwistStamped@gz.msgs.Twist',
+                    '/cmd_vel@geometry_msgs/msg/Twist@gz.msgs.Twist',
 
                     '/world/simple_room/model/my_robot/joint_state@sensor_msgs/msg/JointState@gz.msgs.Model'
 

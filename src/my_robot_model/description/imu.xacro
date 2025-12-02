@@ -1,6 +1,5 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="robot">
-
   <joint name="imu_joint" type="fixed">
     <parent link="chassis"/>
     <child link="imu_link"/>
@@ -10,4 +9,60 @@
   <link name="imu_link">
   </link>
 
+  <gazebo reference="imu_link">
+    <sensor name="imu" type="imu">
+      <pose>0 0 0 0 0 0</pose>
+      <visualize>true</visualize>
+      <update_rate>30</update_rate>
+      <always_on>true</always_on>
+      <gz_frame_id>imu_link</gz_frame_id> <!-- `frame_id` in non-fortress -->
+      <topic>/imu</topic>
+      <imu>
+        <orientation_reference_frame>
+          <localization>ENU</localization>
+        </orientation_reference_frame>
+        <angular_velocity>
+          <x>
+            <noise type="gaussian">
+              <mean>0</mean>
+              <stddev>0.0005</stddev>
+            </noise>
+          </x>
+          <y>
+            <noise type="gaussian">
+              <mean>0</mean>
+              <stddev>0.0005</stddev>
+            </noise>
+          </y>
+          <z>
+            <noise type="gaussian">
+              <mean>0</mean>
+              <stddev>0.0005</stddev>
+            </noise>
+          </z>
+        </angular_velocity>
+        <linear_acceleration>
+          <x>
+            <noise type="gaussian">
+              <mean>0</mean>
+              <stddev>0.001</stddev>
+            </noise>
+          </x>
+          <y>
+            <noise type="gaussian">
+              <mean>0</mean>
+              <stddev>0.001</stddev>
+            </noise>
+          </y>
+          <z>
+            <noise type="gaussian">
+              <mean>0</mean>
+              <stddev>0.001</stddev>
+            </noise>
+          </z>
+        </linear_acceleration>
+        <enable_orientation>true</enable_orientation>
+      </imu>
+    </sensor>
+  </gazebo>
 </robot>

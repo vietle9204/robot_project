@@ -4,6 +4,7 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Comm
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from ament_index_python.packages import get_package_share_directory
+from launch.conditions import IfCondition
 import os
 
 def generate_launch_description():
@@ -32,6 +33,11 @@ def generate_launch_description():
             'robot_model',
             default_value=default_model,
             description='urdf'
+        ),
+        DeclareLaunchArgument(
+            'publish_tf',
+            default_value='false',
+            description='Whether to publish tf or not'
         ),
 
         Node(
@@ -68,10 +74,17 @@ def generate_launch_description():
         #     # parameters=[LaunchConfiguration('use_sim_time')]
         # ),
 
+        # Node(
+        #     package='my_robot_kinematic',
+        #     executable='odom_from_vel_encoder',
+        #     name='odom_from_vel_encoder',
+        #     output='screen',
+        # ),
+
         Node(
             package='my_robot_kinematic',
-            executable='odom_from_vel_encoder',
-            name='odom_from_vel_encoder',
+            executable='odometry_kf',
+            name='odometry_kf',
             output='screen',
         ),
         
@@ -97,11 +110,13 @@ def generate_launch_description():
         ]),
 
         Node(
-                package="odom_to_tf",
-                executable="odom_to_tf",
-                name="odom_to_tf",
-                output="screen",
-                parameters=[config_file_path],
-                remappings=[],
+            package="odom_to_tf",
+            executable="odom_to_tf",
+            name="odom_to_tf",
+            output="screen",
+            parameters=[config_file_path],
+            remappings=[],
+            condition=IfCondition(LaunchConfiguration('publish_tf'))
         )
+
     ])

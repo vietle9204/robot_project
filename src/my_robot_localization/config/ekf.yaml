@@ -13,19 +13,21 @@ ekf_filter_node:
     world_frame: odom
 
     odom0: /odometry/data
+    odom0_queue_size: 3
     odom0_config: [
-      false, false, false,     # x, y, z
-      false, false, false,     # roll, pitch, yaw
+      true, true, false,     # x, y, z
+      false, false, true,     # roll, pitch, yaw
       true,  true, false,     # ẋ, ẏ, ż
-      false, false, false,      # roll̇, pitcḣ, yaẇ
+      false, false, true,      # roll̇, pitcḣ, yaẇ
       false, false, false      # x¨, y¨, z¨
     ]
 
     imu0: imu/data
+    imu0_queue_size: 3
     imu0_config: [
       false, false, false,     # x_pos, y_pos, z_pos
       false, false, true,      # roll, pitch, yaw  <-- dùng orientation từ IMU
       false, false, false,     # linear velocity
       false, false, true,      # roll̇ pitcḣ yaẇ  <-- yaw_rate từ IMU
-      false,  false, false      # accel_x fused, accel_y NO, accel_z NO
+      true,  false, false      # accel_x fused, accel_y NO, accel_z NO
     ]
