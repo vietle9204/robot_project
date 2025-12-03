@@ -83,7 +83,7 @@ def generate_launch_description():
 
         Node(
             package='my_robot_kinematic',
-            executable='odometry_kf',
+            executable='odometry_ekf',
             name='odometry_kf',
             output='screen',
         ),

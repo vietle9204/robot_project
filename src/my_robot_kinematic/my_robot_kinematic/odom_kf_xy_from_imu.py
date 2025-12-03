@@ -87,8 +87,8 @@ class OdomKF(Node):
                              [0, 0, 0.1]])
 
         # measurement noise covariance (tunable)
-        self.R_k = np.array([[1, 0, 0],
-                             [0, 1, 0],
+        self.R_k = np.array([[0.1, 0, 0],
+                             [0, 0.1, 0],
                              [0, 0, 0.05]])
 
         # state covariance
@@ -231,6 +231,7 @@ class OdomKF(Node):
         self.x_k[2,0] = angle_normalize(float(self.x_k[2,0]))
 
         self.z_k = self.x_k.copy()  # for next iteration
+        self.imu_last_time = self.last_time  # sync imu time
 
 
 def main(args=None):

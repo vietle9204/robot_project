@@ -64,13 +64,13 @@ class OdomKF(Node):
         self.x_k = np.zeros((3,1))
 
         # state transition (identity for small-dt model; A will remain I)
-        self.A_k = np.eye(3)
+        self.A_k = np.zeros((3,3))
 
         # input in KF: will be set in KF(dt)
-        self.B_k = np.zeros((3,2))
+        self.G_k = np.zeros((2,2))
 
         # control u = [v, omega]
-        self.U_k = np.zeros((2,1))
+        self.u_k = np.zeros((2,1))
 
         # measurement z (yaw from IMU)
         self.z_k = np.zeros((1,1))
@@ -79,9 +79,8 @@ class OdomKF(Node):
         self.H_k = np.array([[0.0, 0.0, 1.0]])  # shape (1,3)
 
         # process noise covariance (tunable)
-        self.Q_k = np.array([[0.01, 0.00, 0.00],
-                             [0.00, 0.01, 0.00],
-                             [0.00, 0.00, 0.01]])
+        self.Q_k = np.array([[0.03, 0.00],
+                             [0.00, 0.07],])
 
         # measurement noise covariance (tunable)
         self.R_k = np.array([[0.01]])
@@ -89,7 +88,7 @@ class OdomKF(Node):
         # state covariance
         self.P_k = np.array([[0.01, 0.00, 0.00],
                              [0.00, 0.01, 0.00],
-                             [0.00, 0.00, 0.10]])
+                             [0.00, 0.00, 0.02]])
 
 
     def imu_callback(self, msg: Imu):
@@ -134,7 +133,7 @@ class OdomKF(Node):
 
         v = float(msg.twist.linear.x)
         omega = float(msg.twist.angular.z)
-        self.U_k = np.array([[v],[omega]])
+        self.u_k = np.array([[v],[omega]])
 
         self.KF(dt)
 
@@ -173,18 +172,22 @@ class OdomKF(Node):
     def KF(self, dt):
         # update B matrix for discrete integration
         theta = float(self.x_k[2,0])
-        self.B_k = np.array([[math.cos(theta)*dt, 0.0],
+        self.A_k = np.array([[1.0, 0.0, -self.u_k[0,0]*math.sin(theta)*dt],
+                             [0.0, 1.0,  self.u_k[0,0]*math.cos(theta)*dt],
+                             [0.0, 0.0, 1.0]])
+        
+        self.G_k = np.array([[math.cos(theta)*dt, 0.0],
                              [math.sin(theta)*dt, 0.0],
                              [0.0, dt]])
         
         # ==== Kalman Filter: model forecast steps ====
         # Predict
         # forward kinematics:  x_k_f = A x_k + B u_k 
-        x_k_f = self.A_k.dot(self.x_k) + self.B_k.dot(self.U_k)   # (3,1)
+        x_k_f = self.x_k + self.G_k.dot(self.u_k)   # (3,1)
         x_k_f[2,0] = angle_normalize(float(x_k_f[2,0]))
 
         # P_f = A P A^T + Q  
-        P_k_f = self.A_k.dot(self.P_k).dot(self.A_k.T) + self.Q_k
+        P_k_f = self.A_k.dot(self.P_k).dot(self.A_k.T) + self.G_k.dot(self.Q_k).dot(self.G_k.T) 
 
         # ==== Kalman Filter: data assimilation steps ====
         # Kalman gain K = P_f H^T (H P_f H^T + R)^{-1}

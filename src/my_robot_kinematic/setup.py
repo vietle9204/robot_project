@@ -30,6 +30,7 @@ setup(
             'jointState_from_vel_encoder = my_robot_kinematic.jointState_from_vel_encoder:main',
             'odometry_kf = my_robot_kinematic.odometry_kf:main',
             'odom_kf_xy_from_imu = my_robot_kinematic.odom_kf_xy_from_imu:main',
+            'odometry_ekf = my_robot_kinematic.odometry_ekf:main',
         ],
     },
 )

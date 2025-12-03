@@ -47,7 +47,7 @@ class VFHNode(Node):
         self.odom = None
         self.goal = None
 
-        self.reverse_lidar = True    #cấu hình lidar ngược hướng với base_link
+        self.reverse_lidar = False    #cấu hình lidar ngược hướng với base_link
 
         self.get_logger().info("VFH controller node initialized.")
 
