@@ -50,11 +50,13 @@ class OdomKF(Node):
 
         self.declare_parameter('vel_encoder_topic', '/vel_encoder/data')
         self.declare_parameter('odometry_topic', '/odometry/data')
+        self.declare_parameter('imu_topic', '/imu/filtered')
         self.odometry_topic = self.get_parameter('odometry_topic').get_parameter_value().string_value
         self.vel_encoder_topic = self.get_parameter('vel_encoder_topic').get_parameter_value().string_value
+        self.imu_topic = self.get_parameter('imu_topic').get_parameter_value().string_value
 
         self.create_subscription(TwistStamped, self.vel_encoder_topic, self.encoder_callback, qos)
-        self.create_subscription(Imu, '/imu/data', self.imu_callback, qos)
+        self.create_subscription(Imu, self.imu_topic, self.imu_callback, qos)
         self.odom_pub = self.create_publisher(Odometry, self.odometry_topic, qos)
 
         self.last_time = None
@@ -84,7 +86,7 @@ class OdomKF(Node):
         # process noise covariance (tunable)
         self.Q_k = np.array([[0.01, 0, 0],
                              [0, 0.01, 0],
-                             [0, 0, 0.1]])
+                             [0, 0, 0.01]])
 
         # measurement noise covariance (tunable)
         self.R_k = np.array([[0.1, 0, 0],
@@ -94,7 +96,7 @@ class OdomKF(Node):
         # state covariance
         self.P_k = np.array([[0.01, 0, 0],
                              [0, 0.01, 0],
-                             [0, 0, 0.1]])
+                             [0, 0, 0.01]])
 
         # Covariances for publishing odom
         self.pose_covariance = np.diag([0.01, 0.01, 0.0, 0.0, 0.0, 0.05]).flatten().tolist()
@@ -104,6 +106,7 @@ class OdomKF(Node):
     def imu_callback(self, msg: Imu):
         if(self.imu_last_time is None):
             self.imu_last_time = msg.header.stamp
+            self.z_k = self.x_k
             return
         dt = ((msg.header.stamp.sec - self.imu_last_time.sec) +
               (msg.header.stamp.nanosec - self.imu_last_time.nanosec) * 1e-9)
@@ -113,12 +116,12 @@ class OdomKF(Node):
              return
         self.imu_last_time = msg.header.stamp
 
-        # convert quaternion to euler
-        q = msg.orientation
-        roll, pitch, yaw = euler_from_quaternion(q.x, q.y, q.z, q.w)
-        yaw = angle_normalize(yaw)
+        #  yaw
+        self.z_k[2,0] += float(msg.angular_velocity.z) * dt
+        self.z_k[2,0] = angle_normalize(float(self.z_k[2,0]))
+        yaw = self.z_k[2,0]
         
-      # Chuyển gia tốc từ body frame sang global
+       # Chuyển gia tốc từ body frame sang global
         a_x_global = msg.linear_acceleration.x * math.cos(yaw) #- msg.linear_acceleration.y * math.sin(yaw)
         a_y_global = msg.linear_acceleration.x * math.sin(yaw) #+ msg.linear_acceleration.y * math.cos(yaw)
 
@@ -230,8 +233,8 @@ class OdomKF(Node):
         self.x_k = x_k_f + K_k.dot(e_k)
         self.x_k[2,0] = angle_normalize(float(self.x_k[2,0]))
 
-        self.z_k = self.x_k.copy()  # for next iteration
-        self.imu_last_time = self.last_time  # sync imu time
+        # self.z_k = self.x_k.copy()  # for next iteration
+        # self.imu_last_time = self.last_time  # sync imu time
 
 
 def main(args=None):

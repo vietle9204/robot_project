@@ -5,12 +5,20 @@ import math
 import numpy as np
 from geometry_msgs.msg import TwistStamped
 from nav_msgs.msg import Odometry
-from sensor_msgs.msg import Imu
+from sensor_msgs.msg import Imu, MagneticField
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
+
 
 def angle_normalize(a):
     """Normalize angle to [-pi, pi]."""
     return (a + math.pi) % (2 * math.pi) - math.pi
+
+def compute_heading(mag_x, mag_y):
+    heading = math.atan2(mag_y, mag_x)
+    heading_deg = math.degrees(heading)
+    if heading_deg < 0:
+        heading_deg += 360
+    return heading_deg
 
 def euler_from_quaternion(qx, qy, qz, qw):
     # normalize quaternion to avoid NaNs if not unit
@@ -50,15 +58,21 @@ class OdomKF(Node):
 
         self.declare_parameter('vel_encoder_topic', '/vel_encoder/data')
         self.declare_parameter('odometry_topic', '/odometry/data')
+        self.declare_parameter('imu_topic', '/imu/filtered')
         self.odometry_topic = self.get_parameter('odometry_topic').get_parameter_value().string_value
         self.vel_encoder_topic = self.get_parameter('vel_encoder_topic').get_parameter_value().string_value
+        self.imu_topic = self.get_parameter('imu_topic').get_parameter_value().string_value
 
         self.create_subscription(TwistStamped, self.vel_encoder_topic, self.encoder_callback, qos)
-        self.create_subscription(Imu, '/imu/data', self.imu_callback, qos)
+        self.create_subscription(Imu, self.imu_topic, self.imu_callback, qos)
+        self.create_subscription(MagneticField, "/mag/filtered", self.cb_mag, 10)
         self.odom_pub = self.create_publisher(Odometry, self.odometry_topic, qos)
 
         self.last_time = None
         self.imu_last_time = None
+
+        self.mag_yaw_base = None
+        self.mag_yaw = None
 
         # state: [x, y, theta]^T
         self.x_k = np.zeros((3,1))
@@ -84,7 +98,7 @@ class OdomKF(Node):
                              [0.00, 0.00, 0.01]])
 
         # measurement noise covariance (tunable)
-        self.R_k = np.array([[0.01]])
+        self.R_k = np.array([[0.005]])
 
         # state covariance
         self.P_k = np.array([[0.01, 0.00, 0.00],
@@ -114,6 +128,14 @@ class OdomKF(Node):
 
         self.z_k[0,0] += float(msg.angular_velocity.z) * dt
         self.z_k[0,0] = angle_normalize(float(self.z_k[0,0]))
+
+    def cb_mag(self, msg):
+        mag_x = msg.magnetic_field.x
+        mag_y = msg.magnetic_field.y
+        self.mag_yaw = compute_heading(mag_x, mag_y)
+
+        if self.mag_yaw_base is None:
+            self.mag_yaw_base = self.mag_yaw - self.z_k[0, 0]
 
     def encoder_callback(self, msg: TwistStamped):
         # prefer using the msg.header.stamp if available for consistent timing

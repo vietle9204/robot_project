@@ -62,8 +62,8 @@ class VFHNode(Node):
         # robot parameter
         self.declare_parameter('safety_dist', 0.25)
         self.declare_parameter('influence_dist', 1.0)
-        self.declare_parameter('max_speed', 1.0)
-        self.declare_parameter('max_omega', 1.0)
+        self.declare_parameter('max_speed', 0.7)
+        self.declare_parameter('max_omega', 0.8)
         self.declare_parameter('sector_count', 72)
         self.declare_parameter('goal_tolerance', 0.1)
         # self.robot_radius = 0.11

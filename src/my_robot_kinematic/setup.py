@@ -31,6 +31,7 @@ setup(
             'odometry_kf = my_robot_kinematic.odometry_kf:main',
             'odom_kf_xy_from_imu = my_robot_kinematic.odom_kf_xy_from_imu:main',
             'odometry_ekf = my_robot_kinematic.odometry_ekf:main',
+            'imu_filter = my_robot_kinematic.imu_filter:main',
         ],
     },
 )
