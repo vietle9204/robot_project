@@ -83,9 +83,18 @@ def generate_launch_description():
 
         Node(
             package='my_robot_kinematic',
+            executable='imu_filter',
+            name='imu_filter',
+            output='screen',
+            prefix='xterm -e',
+        ),
+
+        Node(
+            package='my_robot_kinematic',
             executable='odometry_ekf',
             name='odometry_kf',
             output='screen',
+            parameters=[{'imu_topic': 'imu/filtered'}]
         ),
         
         Node(

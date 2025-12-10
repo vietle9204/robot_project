@@ -85,7 +85,7 @@
 #                              [0.00, 0.02],])
 
 #         # measurement noise covariance (tunable)
-#         self.R_k = np.array([[0.005]])
+#         self.R_k = np.array([[0.01]])
 
 #         # state covariance
 #         self.P_k = np.array([[0.01, 0.00, 0.00],
@@ -283,7 +283,7 @@ class OdomKF(Node):
 
         self.declare_parameter('vel_encoder_topic', '/vel_encoder/data')
         self.declare_parameter('odometry_topic', '/odometry/data')
-        self.declare_parameter('imu_topic', '/imu/filtered')
+        self.declare_parameter('imu_topic', '/imu/data')
         self.odometry_topic = self.get_parameter('odometry_topic').get_parameter_value().string_value
         self.vel_encoder_topic = self.get_parameter('vel_encoder_topic').get_parameter_value().string_value
         self.imu_topic = self.get_parameter('imu_topic').get_parameter_value().string_value
@@ -315,15 +315,15 @@ class OdomKF(Node):
 
         # process noise covariance (tunable)
         self.Q_k = np.array([[0.01, 0.00],
-                             [0.00, 0.02],])
+                             [0.00, 0.015],])
 
         # measurement noise covariance (tunable)
-        self.R_k = np.array([[0.01]])
+        self.R_k = np.array([[0.005]])
 
         # state covariance
         self.P_k = np.array([[0.01, 0.00, 0.00],
                              [0.00, 0.01, 0.00],
-                             [0.00, 0.00, 0.02]])
+                             [0.00, 0.00, 0.015]])
 
 
     def imu_callback(self, msg: Imu):

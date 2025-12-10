@@ -58,14 +58,14 @@ class OdomKF(Node):
 
         self.declare_parameter('vel_encoder_topic', '/vel_encoder/data')
         self.declare_parameter('odometry_topic', '/odometry/data')
-        self.declare_parameter('imu_topic', '/imu/filtered')
+        self.declare_parameter('imu_topic', '/imu/data')
         self.odometry_topic = self.get_parameter('odometry_topic').get_parameter_value().string_value
         self.vel_encoder_topic = self.get_parameter('vel_encoder_topic').get_parameter_value().string_value
         self.imu_topic = self.get_parameter('imu_topic').get_parameter_value().string_value
 
         self.create_subscription(TwistStamped, self.vel_encoder_topic, self.encoder_callback, qos)
         self.create_subscription(Imu, self.imu_topic, self.imu_callback, qos)
-        self.create_subscription(MagneticField, "/mag/filtered", self.cb_mag, 10)
+        # self.create_subscription(MagneticField, "/mag/filtered", self.cb_mag, 10)
         self.odom_pub = self.create_publisher(Odometry, self.odometry_topic, qos)
 
         self.last_time = None

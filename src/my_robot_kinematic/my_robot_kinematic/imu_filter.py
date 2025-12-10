@@ -73,7 +73,7 @@ class ImuFilterNode(Node):
 
         # --------------- PARAMETER ----------------
         self.declare_parameter("fc", 5.0)   # Hz
-        self.declare_parameter("fs", 50.0)  # Hz (raw IMU rate)
+        self.declare_parameter("fs", 30.0)  # Hz (raw IMU rate)
 
         fc = self.get_parameter("fc").value
         fs = self.get_parameter("fs").value
