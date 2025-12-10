@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>my_robot_maps</name>
+  <version>0.0.0</version>
+  <description>Map resources for my robot</description>
+
+  <maintainer email="vietle9204@gmail.com">vietle9204</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>ament_index_cpp</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+
+</package>
