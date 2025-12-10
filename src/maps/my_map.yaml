@@ -1,0 +1,7 @@
+image: "/home/vatcraft/Desktop/FET/ROS2/my_robot_ws/robot_project/src/my_robot_maps/maps/my_map.pgm"
+mode: trinary
+resolution: 0.050
+origin: [-1.049, -1.206, 0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.196
