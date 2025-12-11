@@ -492,7 +492,7 @@ if __name__ == '__main__':
 # from rclpy.node import Node
 # import math
 # import numpy as np
-# from geometry_msgs.msg import TwistStamped, PoseStamped
+# from geometry_msgs.msg import TwistStamped, PoseWithCovarianceStamped
 # from nav_msgs.msg import Odometry
 # from sensor_msgs.msg import Imu
 # from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
@@ -546,7 +546,7 @@ if __name__ == '__main__':
 
 #         self.create_subscription(TwistStamped, self.vel_encoder_topic, self.encoder_callback, qos)
 #         self.create_subscription(Imu, self.imu_topic, self.imu_callback, qos)
-#         self.create_subscription(PoseStamped, '/amcl_pose', self.amcl_cb, qos)
+#         self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.amcl_cb, qos)
 #         self.odom_pub = self.create_publisher(Odometry, self.odometry_topic, qos)
 
 #         self.last_time = None
@@ -588,14 +588,14 @@ if __name__ == '__main__':
 #                              [0.00, 0.01, 0.00],
 #                              [0.00, 0.00, 0.015]])
 
-#     def amcl_cb(self, msg: PoseStamped):
-#         self.z_k[1, 0] = msg.pose.position.x
-#         self.z_k[2, 0] = msg.pose.position.y
+#     def amcl_cb(self, msg: PoseWithCovarianceStamped):
+#         self.z_k[1, 0] = msg.pose.pose.position.x
+#         self.z_k[2, 0] = msg.pose.pose.position.y
 
-#         _, _, yaw = euler_from_quaternion(msg.pose.orientation.x,
-#                                            msg.pose.orientation.y,
-#                                            msg.pose.orientation.z,
-#                                            msg.pose.orientation.w)
+#         _, _, yaw = euler_from_quaternion(msg.pose.pose.orientation.x,
+#                                            msg.pose.pose.orientation.y,
+#                                            msg.pose.pose.orientation.z,
+#                                            msg.pose.pose.orientation.w)
 
 #         yaw = angle_normalize(yaw)
 
