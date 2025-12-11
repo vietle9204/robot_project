@@ -239,7 +239,7 @@ class VFHNode(Node):
         linear = self.max_speed * front_penalty * math.exp(-abs(angular_error)*3)
 
         # slow as we approach goal
-        linear = linear * min(1.0, dist_to_goal / 1.0)
+        # linear = linear * min(1.0, dist_to_goal / 1.0)
 
         # clamp small values
         if abs(linear) < 0.01:
