@@ -65,7 +65,7 @@ class VFHNode(Node):
         self.declare_parameter('max_speed', 0.7)
         self.declare_parameter('max_omega', 0.8)
         self.declare_parameter('sector_count', 72)
-        self.declare_parameter('goal_tolerance', 0.1)
+        self.declare_parameter('goal_tolerance', 0.05)
         # self.robot_radius = 0.11
 
         #cost parameters
