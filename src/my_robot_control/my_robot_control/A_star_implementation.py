@@ -127,7 +127,7 @@
 #!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import Path, Odometry
 import yaml
 import numpy as np
@@ -137,6 +137,8 @@ import os
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 from ament_index_python.packages import get_package_share_directory
 import threading
+import math
+import cv2
 
 qos = QoSProfile(
     reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -179,22 +181,27 @@ class AStarNode(Node):
         img = np.array(img, dtype=np.float32) / 255.0
         self.rows, self.cols = img.shape  # rows = height, cols = width
         
-        # build grid: 1 obstacle, 0 free, -1 unknown
+        # build grid:
         self.grid = np.zeros((self.rows, self.cols), dtype=np.int8)
-        self.grid[img >= self.occupied_thresh] = 0
-        self.grid[img <= self.free_thresh] = 1
+        self.grid[img >= self.occupied_thresh] = 0   #free
+        self.grid[img <= self.free_thresh] = 1      #occoupied
         self.grid[(img > self.free_thresh) & (img < self.occupied_thresh)] = -1
         # flip vertically to match world->grid convention used later
         self.grid = np.flipud(self.grid)
         # self.grid = np.fliplr(self.grid)
 
-
+        kernel = np.ones((5,5), np.uint8)
+        obs = (self.grid == 1).astype(np.uint8)
+        inflated = cv2.dilate(obs, kernel)
+        mask = (inflated == 1) & (self.grid == 0)
+        self.grid[mask] = 1
 
         self.get_logger().info(f"Map loaded: rows={self.rows}, cols={self.cols}, res={self.resolution}, origin={self.origin}")
 
         # ---------- ROS interface ----------
         self.path_pub = self.create_publisher(Path, '/astar_path', 10)
-        self.create_subscription(Odometry, '/odometry/data', self.odom_cb, qos)
+        # self.create_subscription(Odometry, '/odometry/data', self.odom_cb, qos)
+        self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.amcl_cb, 10)
         self.create_subscription(PoseStamped, '/goal_pose', self.goal_callback, 10)
 
         # start = odom, goal from topic
@@ -205,6 +212,7 @@ class AStarNode(Node):
         self._lock = threading.Lock()
 
         self.get_logger().info("AStarNode initialized.")
+        
 
     # world -> grid
     def world_to_grid(self, x, y):
@@ -223,9 +231,13 @@ class AStarNode(Node):
         y = gy * self.resolution + self.origin[1] + self.resolution / 2
         return x, y
 
-    def odom_cb(self, msg: Odometry):
-        # update start from odometry
+    # def odom_cb(self, msg: Odometry):
+    #     # update start from odometry
+    #     self.start = (msg.pose.pose.position.x, msg.pose.pose.position.y)
+
+    def amcl_cb(self, msg: PoseWithCovarianceStamped):
         self.start = (msg.pose.pose.position.x, msg.pose.pose.position.y)
+
 
     def goal_callback(self, msg: PoseStamped):
         self.goal = (msg.pose.position.x, msg.pose.position.y)
@@ -246,7 +258,7 @@ class AStarNode(Node):
     def try_plan(self):
         # require both start (odom) and goal
         if self.start is None:
-            self.get_logger().warn("No odometry yet (start is None). Waiting for /odometry/data.")
+            self.get_logger().warn("No amcl_pose . waitting")
             return
         if self.goal is None:
             self.get_logger().warn("No goal set.")
@@ -288,7 +300,7 @@ class AStarNode(Node):
             self.get_logger().warn("No path found!")
             return
 
-        # build Path message
+        # build Path messageS
         path_msg = Path()
         path_msg.header.frame_id = "map"
         path_msg.header.stamp = self.get_clock().now().to_msg()
@@ -338,7 +350,7 @@ class AStarNode(Node):
 
         def heuristic(a, b):
             # Euclidean or Manhattan; keep Manhattan for speed
-            return abs(a[0]-b[0]) + abs(a[1]-b[1])
+            return math.sqrt((a[0] - b[0])**2 + (a[1] - b[1])**2)
 
         while open_set:
             _, current = heapq.heappop(open_set)

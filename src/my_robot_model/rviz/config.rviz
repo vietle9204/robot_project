@@ -10,6 +10,7 @@ Panels:
         - /PointCloud21
         - /Map1
         - /Camera1
+        - /Path1
       Splitter Ratio: 0.5
     Tree Height: 491
 Visualization Manager:
@@ -91,7 +92,6 @@ Visualization Manager:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-          Value: true
         laser:
           Alpha: 1
           Show Axes: false
@@ -144,6 +144,8 @@ Visualization Manager:
           Value: true
         left_wheel:
           Value: true
+        map:
+          Value: true
         odom:
           Value: true
         right_wheel:
@@ -154,6 +156,8 @@ Visualization Manager:
       Show Axes: true
       Show Names: true
       Tree:
+        map:
+          {}
         odom:
           base_link:
             base_footprint:
@@ -284,15 +288,44 @@ Visualization Manager:
         Grid: true
         LaserScan: true
         Map: true
+        Path: true
         PointCloud2: true
         RobotModel: true
         TF: true
         Value: true
       Zoom Factor: 1
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 25; 255; 0
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Lines
+      Line Width: 0.029999999329447746
+      Name: Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /astar_path
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
-    Fixed Frame: odom
+    Fixed Frame: map
     Frame Rate: 60
   Name: root
   Tools:
@@ -317,7 +350,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 14.137939453125
+      Distance: 27.905780792236328
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -335,7 +368,7 @@ Visualization Manager:
       Pitch: 1.5697963237762451
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 2.2303969860076904
+      Yaw: 3.3503975868225098
     Saved: ~
 Window Geometry:
   Camera:
