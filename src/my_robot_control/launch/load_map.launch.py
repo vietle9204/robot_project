@@ -7,7 +7,7 @@ import time
 
 def generate_launch_description():
 
-    map_yaml = "/home/vietle9204/robot_ws/src/maps/my_map.yaml"
+    map_yaml = "/home/vietle9204/robot_ws/src/my_robot_control/maps/my_map.yaml"
 
     # 1. Launch map_server
     map_server_node = Node(

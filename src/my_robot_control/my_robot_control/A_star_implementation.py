@@ -190,6 +190,7 @@ class AStarNode(Node):
         self.grid = np.flipud(self.grid)
         # self.grid = np.fliplr(self.grid)
 
+        # mở rộng ô vật cản
         kernel = np.ones((5,5), np.uint8)
         obs = (self.grid == 1).astype(np.uint8)
         inflated = cv2.dilate(obs, kernel)
@@ -351,6 +352,7 @@ class AStarNode(Node):
         def heuristic(a, b):
             # Euclidean or Manhattan; keep Manhattan for speed
             return math.sqrt((a[0] - b[0])**2 + (a[1] - b[1])**2)
+            # return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
         while open_set:
             _, current = heapq.heappop(open_set)
