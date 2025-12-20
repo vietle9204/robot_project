@@ -4,6 +4,13 @@ from rclpy.node import Node
 import math
 
 from sensor_msgs.msg import Imu, MagneticField
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
+
+qos = QoSProfile(
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    durability=DurabilityPolicy.VOLATILE,
+    depth=10
+)
 
 def compute_heading(mag_x, mag_y):
     heading = math.atan2(mag_y, mag_x)
@@ -72,8 +79,8 @@ class ImuFilterNode(Node):
         super().__init__('imu_butterworth_filter')
 
         # --------------- PARAMETER ----------------
-        self.declare_parameter("fc", 5.0)   # Hz
-        self.declare_parameter("fs", 30.0)  # Hz (raw IMU rate)
+        self.declare_parameter("fc", 3.0)   # Hz
+        self.declare_parameter("fs", 10.0)  # Hz (raw IMU rate)
 
         fc = self.get_parameter("fc").value
         fs = self.get_parameter("fs").value
@@ -95,8 +102,8 @@ class ImuFilterNode(Node):
         self.mz = ButterworthFilter2(fc, fs)
 
         # SUBSCRIBER & PUBLISHER
-        self.sub = self.create_subscription(Imu, "/imu/data", self.cb_imu, 10)
-        self.sub_mag = self.create_subscription(MagneticField, "/mag/data", self.cb_mag, 10)
+        self.sub = self.create_subscription(Imu, "/imu/data", self.cb_imu, qos)
+        self.sub_mag = self.create_subscription(MagneticField, "/mag/data", self.cb_mag, qos)
         self.pub = self.create_publisher(Imu, "/imu/filtered", 10)
         self.pub_mag = self.create_publisher(MagneticField, "/mag/filtered", 10)
 

@@ -39,7 +39,7 @@ class VFHNode(Node):
             self.cmd_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
 
         # parameters
-        self.timer = self.create_timer(0.1, self.control_loop)  # 10 Hz
+        self.timer = self.create_timer(0.2, self.control_loop)  # 10 Hz
         self.prev_angle = 0.0
 
         # state
@@ -62,8 +62,8 @@ class VFHNode(Node):
         # robot parameter
         self.declare_parameter('safety_dist', 0.25)
         self.declare_parameter('influence_dist', 1.0)
-        self.declare_parameter('max_speed', 0.7)
-        self.declare_parameter('max_omega', 0.8)
+        self.declare_parameter('max_speed', 0.8)
+        self.declare_parameter('max_omega', 1.3)
         self.declare_parameter('sector_count', 72)
         self.declare_parameter('goal_tolerance', 0.05)
         # self.robot_radius = 0.11

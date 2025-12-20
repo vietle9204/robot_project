@@ -144,7 +144,7 @@ class MyRobotNav(Node):
         dist = math.sqrt(dx*dx + dy*dy)
 
         # Nếu đạt goal → chuyển sang goal tiếp theo
-        if dist < 0.22:
+        if dist < 0.3:
             self.index += 1
             if self.index < len(self.path):
                 self.publish_goal(new_pose)

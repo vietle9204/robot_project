@@ -5,6 +5,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import os
 from pathlib import Path
+import cv2
 
 
 script_dir = Path(__file__).resolve().parent
@@ -23,6 +24,15 @@ with open(yaml_path, 'r') as file:
     map_data = yaml.safe_load(file)
 
 pgm_path = map_data['image']
+
+# Resolve relative image path relative to YAML file
+if not os.path.isabs(pgm_path):
+    pgm_path = os.path.join(os.path.dirname(yaml_path), pgm_path)
+
+pgm_path = os.path.normpath(pgm_path)
+
+print("Resolved PGM path:", pgm_path)
+
 resolution = map_data['resolution']
 origin = map_data['origin']
 occupied_thresh = map_data.get('occupied_thresh')
@@ -60,10 +70,16 @@ ax1.set_xlabel('Grid X')
 ax1.set_ylabel('Grid Y')
 ax1.grid(True, alpha=0.3)
 
+kernel = np.ones((5,5), np.uint8)
+obs = (grid == 1).astype(np.uint8)
+inflated = cv2.dilate(obs, kernel)
+mask = (inflated == 1) & (grid == 0)
+grid[mask] = 1
+
 # Plot 2: World coordinates
 extent = [origin[0], origin[0] + cols * resolution, 
           origin[1], origin[1] + rows * resolution]
-ax2.imshow(np.flipud(grid), cmap='gray_r', extent=extent, origin='lower')
+ax2.imshow(grid, cmap='gray_r', extent=extent, origin='lower')
 ax2.set_title('Occupancy Grid (World Coordinates)')
 ax2.set_xlabel('World X (m)')
 ax2.set_ylabel('World Y (m)')
