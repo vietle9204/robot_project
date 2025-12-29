@@ -41,8 +41,8 @@ class JointStatePublisher(Node):
         v = msg.twist.linear.x
         omega = msg.twist.angular.z
 
-        v_left = (v - omega * self.wheel_separation/2.0) / (self.wheel_radius)
-        v_right = (v + omega * self.wheel_separation/2.0) / (self.wheel_radius)
+        v_left = (v - omega * self.wheel_separation) / (self.wheel_radius)
+        v_right = (v + omega * self.wheel_separation) / (self.wheel_radius)
 
         self.left_wheel_pos += v_left * dt
         self.right_wheel_pos += v_right * dt

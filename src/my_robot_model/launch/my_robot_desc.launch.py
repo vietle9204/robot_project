@@ -83,26 +83,40 @@ def generate_launch_description():
 
         Node(
             package='my_robot_kinematic',
+            executable='jointState_from_vel_encoder',
+            name='jointState_from_vel_encoder',
+            output='screen',
+        ),
+
+
+        Node(
+            package='my_robot_kinematic',
             executable='imu_filter',
             name='imu_filter',
             output='screen',
             prefix='xterm -e',
         ),
 
-        Node(
-            package='my_robot_kinematic',
-            executable='odometry_ekf',
-            name='odometry_kf',
-            output='screen',
-            parameters=[{'imu_topic': 'imu/filtered'}]
-        ),
-        
-        Node(
-            package='my_robot_kinematic',
-            executable='jointState_from_vel_encoder',
-            name='jointState_from_vel_encoder',
-            output='screen',
-        ),
+        # Node(
+        #     package='my_robot_kinematic',
+        #     executable='odometry_ekf',
+        #     name='odometry_kf',
+        #     output='screen',
+        #     parameters=[{'imu_topic': 'imu/filtered'}]
+        # ),
+
+
+        TimerAction(
+            period=3.0,  # đợi 4 giây cho robot_state_publisher publish
+            actions=[
+            Node(
+                package='my_robot_kinematic',
+                executable='state_estimate',
+                name='state_estimate',
+                output='screen',
+                parameters=[{'imu_topic': 'imu/filtered'}]
+            ),
+        ]),
         
         # RViz
         TimerAction(

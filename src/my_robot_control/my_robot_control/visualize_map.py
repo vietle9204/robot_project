@@ -10,7 +10,7 @@ import cv2
 
 script_dir = Path(__file__).resolve().parent
 src_dir = script_dir.parent.parent 
-yaml_path = src_dir / 'maps' / 'my_map.yaml'
+yaml_path = src_dir / 'maps' / 'my_map1.yaml'
 yaml_path = str(yaml_path)
 print(f"[Method 2] Using relative path: {yaml_path}")
 

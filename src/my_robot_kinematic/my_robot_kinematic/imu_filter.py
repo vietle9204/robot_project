@@ -14,10 +14,11 @@ qos = QoSProfile(
 
 def compute_heading(mag_x, mag_y):
     heading = math.atan2(mag_y, mag_x)
-    heading_deg = math.degrees(heading)
-    if heading_deg < 0:
-        heading_deg += 360
-    return heading_deg
+    
+    # heading_deg = math.degrees(heading)
+    # if heading_deg < 0:
+    #     heading_deg += 360
+    return heading
 
 class ButterworthFilter2:
     def __init__(self, fc, fs):
@@ -80,7 +81,7 @@ class ImuFilterNode(Node):
 
         # --------------- PARAMETER ----------------
         self.declare_parameter("fc", 3.0)   # Hz
-        self.declare_parameter("fs", 10.0)  # Hz (raw IMU rate)
+        self.declare_parameter("fs", 15.0)  # Hz (raw IMU rate)
 
         fc = self.get_parameter("fc").value
         fs = self.get_parameter("fs").value
@@ -152,11 +153,11 @@ class ImuFilterNode(Node):
         self.pub_mag.publish(out)
 
         # LOG
-        self.get_logger().info(
-            f"[MAG raw] mx={msg.magnetic_field.x:.3f}, "
-            f"my={msg.magnetic_field.y:.3f}, mz={msg.magnetic_field.z:.3f} |"
-            f"[MAG filt] mx={mx_f:.3f}, my={my_f:.3f}, mz={mz_f:.3f}"
-        )
+        # self.get_logger().info(
+        #     f"[MAG raw] mx={msg.magnetic_field.x:.3f}, "
+        #     f"my={msg.magnetic_field.y:.3f}, mz={msg.magnetic_field.z:.3f} |"
+        #     f"[MAG filt] mx={mx_f:.3f}, my={my_f:.3f}, mz={mz_f:.3f}"
+        # )
 
         self.get_logger().info(f"mag : {compute_heading(mx_f, my_f)}")
 
