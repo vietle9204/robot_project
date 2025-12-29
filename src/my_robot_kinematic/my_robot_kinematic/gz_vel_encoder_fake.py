@@ -99,7 +99,7 @@ class Encoder_vel(Node):
         self.vel_msg.header.frame_id = "base_link"
 
         # Timer (10 Hz)
-        self.create_timer(0.08, self.timer_cb)
+        self.create_timer(0.04, self.timer_cb)
 
     def timer_cb(self):
         if self.stamp is None:   # chưa có dữ liệu joint

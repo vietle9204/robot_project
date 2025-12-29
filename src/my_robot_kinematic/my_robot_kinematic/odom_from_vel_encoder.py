@@ -99,6 +99,10 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 
 #     return roll, pitch, yaw
 
+def angle_normalize(a):
+    """Normalize angle to [-pi, pi]."""
+    return (a + math.pi) % (2 * math.pi) - math.pi
+
 class OdomFromVelEncoder(Node):
     def __init__(self):
         super().__init__('odom_node')
@@ -110,7 +114,7 @@ class OdomFromVelEncoder(Node):
         )
 
         self.declare_parameter('vel_encoder_topic', '/vel_encoder/data')
-        self.declare_parameter('odometry_topic', '/odometry/data')
+        self.declare_parameter('odometry_topic', '/odom00')
         self.odometry_topic = self.get_parameter('odometry_topic').get_parameter_value().string_value
         self.vel_encoder_topic = self.get_parameter('vel_encoder_topic').get_parameter_value().string_value
 
@@ -148,12 +152,13 @@ class OdomFromVelEncoder(Node):
         self.x += v * math.cos(self.theta) * dt
         self.y += v * math.sin(self.theta) * dt
         self.theta += omega * dt
+        self.theta =  angle_normalize(self.theta )
 
         # q = quaternion_from_euler(0.0, 0.0, self.theta)
 
         odom = Odometry()
         odom.header.stamp = current_time
-        odom.header.frame_id = "odom"
+        odom.header.frame_id = "odom0"
         odom.child_frame_id = "base_link"
 
         odom.pose.pose.position.x = self.x

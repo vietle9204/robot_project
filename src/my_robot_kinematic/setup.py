@@ -36,6 +36,8 @@ setup(
             'odom_kf_xy_from_imu = my_robot_kinematic.odom_kf_xy_from_imu:main',
             'odometry_ekf = my_robot_kinematic.odometry_ekf:main',
             'imu_filter = my_robot_kinematic.imu_filter:main',
+            'state_estimate = my_robot_kinematic.state_estimate:main',
+            'read_logger = my_robot_kinematic.read:main',
         ],
     },
 )
