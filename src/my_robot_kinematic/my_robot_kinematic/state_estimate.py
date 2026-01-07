@@ -3,7 +3,7 @@ import rclpy
 from rclpy.node import Node
 import math
 import numpy as np
-from geometry_msgs.msg import TwistStamped
+from geometry_msgs.msg import TwistStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Imu, MagneticField
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
@@ -57,7 +57,9 @@ class state_estimate(Node):
 
         self.create_subscription(TwistStamped, self.vel_encoder_topic, self.encoder_callback, qos)
         self.create_subscription(Imu, self.imu_topic, self.imu_callback, qos)
+        # self.create_subscription(PoseWithCovarianceStamped, '/initialpose', self.initialpose_callback, qos)
         # self.create_subscription(MagneticField, "/mag/filtered", self.cb_mag, qos)
+        # self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.amcl_cb, qos)
         self.odom_pub = self.create_publisher(Odometry, self.odometry_topic, qos)
 
         # Timer 50 Hz
@@ -88,7 +90,7 @@ class state_estimate(Node):
         self.Q_k = np.diag([0.01, 0.01, 0.01, 0.922, 2.07])
 
         # state covariance
-        self.P_k = np.diag([0.01, 0.01, 0.01, 9.9, 9.9])
+        self.P_k = np.diag([0.01, 0.01, 0.01, 0.9, 0.9])
 
         # # measurement z (yaw from IMU)
         # self.z_k = np.zeros((4,1))
@@ -98,6 +100,21 @@ class state_estimate(Node):
 
         # # measurement noise covariance 
         # self.R_k = np.diag([0.01, 0.01, 0.01, 0.01])
+
+    def initialpose_callback(self, msg: PoseWithCovarianceStamped):
+        q = msg.pose.pose.orientation
+        _, _, yaw = euler_from_quaternion(q.x, q.y, q.z, q.w)
+        yaw = angle_normalize(yaw)
+
+        self.x_k[0,0] = msg.pose.pose.position.x
+        self.x_k[1,0] = msg.pose.pose.position.y
+        self.x_k[2,0] = yaw
+
+        self.get_logger().info(f"Initial pose set: x={self.x_k[0,0]:.2f}, y={self.x_k[1,0]:.2f}, yaw={self.x_k[2,0]:.2f}")
+
+        self.P_k = np.diag([0.01, 0.01, 0.01, 0.9, 0.9])
+
+        self.publish_odom(msg.header.stamp)
 
 
     def imu_callback(self, msg: Imu):
@@ -134,7 +151,7 @@ class state_estimate(Node):
                       [0.0, 0.0, 0.0, 0.0, 1.0]])
 
         R = np.array([[0.01, 0.00],
-                      [0.00, 0.03]])
+                      [0.00, 0.003]])
   
         self.EKF_update(z, H, R, 0)
 
@@ -212,11 +229,37 @@ class state_estimate(Node):
                       [0.0, 0.0, 0.0, 0.0, 1.0]])
 
         R = np.array([[0.0001, 0.00],
-                      [0.00, 0.0003]])
+                      [0.00, 0.0002]])
   
         self.EKF_update(z, H, R, None)
 
         self.publish_odom(msg.header.stamp)
+
+
+    # def amcl_cb(self, msg: PoseWithCovarianceStamped):
+    #     q = msg.pose.pose.orientation
+    #     yaw = 2.0 * math.atan2(q.z, q.w)
+    #     yaw = angle_normalize(yaw)
+
+    #     z = np.array([[msg.pose.pose.position.x],
+    #                   [msg.pose.pose.position.y],
+    #                   [yaw]])
+        
+    #     self.get_logger().info(f"AMCL pose: x={z[0,0]:.2f}, y={z[1,0]:.2f}, yaw={z[2,0]:.2f}")
+        
+    #     H = np.array([[1.0, 0.0, 0.0, 0.0, 0.0],
+    #                   [0.0, 1.0, 0.0, 0.0, 0.0],
+    #                   [0.0, 0.0, 1.0, 0.0, 0.0]])
+
+    
+    #     R = np.array([[msg.pose.covariance[0], msg.pose.covariance[1], 0.00],
+    #                   [msg.pose.covariance[6], msg.pose.covariance[7], 0.00],
+    #                   [0.00, 0.00, msg.pose.covariance[35]]])
+  
+    #     self.EKF_update(z, H, R, 2)
+
+    #     self.publish_odom(msg.header.stamp)
+
 
     def EKF_prediction(self):
         dt = self.timer_period

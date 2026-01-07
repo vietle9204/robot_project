@@ -38,6 +38,7 @@ setup(
             'imu_filter = my_robot_kinematic.imu_filter:main',
             'state_estimate = my_robot_kinematic.state_estimate:main',
             'read_logger = my_robot_kinematic.read:main',
+            'scanToCloud = my_robot_kinematic.scanToCloud:main',
         ],
     },
 )
