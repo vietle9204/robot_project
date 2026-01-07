@@ -50,37 +50,8 @@ def generate_launch_description():
                 'robot_description': robot_desc
             }],
         ),
-        
-        # # # joint state publisher
-        # # TimerAction(
-        # #     period=3.0,  # đợi 2 giây cho robot_state_publisher publish
-        # #     actions=[
-        # #         Node(
-        # #             package='my_robot_model',
-        # #             executable='wheel_odom_publisher.py',
-        # #             name='wheel_odom_publisher',
-        # #             output='screen',
-        # #             parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
-        # #         )
-        # #     ]
-        # # ),
 
-
-        # Node(
-        #     package='my_robot_kinematic',
-        #     executable='odometry_publisher',
-        #     name='odometry_publisher',
-        #     output='screen',
-        #     # parameters=[LaunchConfiguration('use_sim_time')]
-        # ),
-
-        # Node(
-        #     package='my_robot_kinematic',
-        #     executable='odom_from_vel_encoder',
-        #     name='odom_from_vel_encoder',
-        #     output='screen',
-        # ),
-
+        # ====== joint state =====
         Node(
             package='my_robot_kinematic',
             executable='jointState_from_vel_encoder',
@@ -88,7 +59,7 @@ def generate_launch_description():
             output='screen',
         ),
 
-
+        # ====== imu filter =====
         Node(
             package='my_robot_kinematic',
             executable='imu_filter',
@@ -97,18 +68,28 @@ def generate_launch_description():
             prefix='xterm -e',
         ),
 
-        # Node(
-        #     package='my_robot_kinematic',
-        #     executable='odometry_ekf',
-        #     name='odometry_kf',
-        #     output='screen',
-        #     parameters=[{'imu_topic': 'imu/filtered'}]
-        # ),
-
+        # ====== odometry =====
 
         TimerAction(
             period=3.0,  # đợi 4 giây cho robot_state_publisher publish
             actions=[
+            
+            # Node(
+            #     package='my_robot_kinematic',
+            #     executable='odom_from_vel_encoder',
+            #     name='odom_from_vel_encoder',
+            #     parameters=[{'imu_topic': 'imu/filtered'}],
+            #     output='screen',
+            # ),
+
+            # Node(
+            #     package='my_robot_kinematic',
+            #     executable='odometry_ekf',
+            #     name='odometry_kf',
+            #     output='screen',
+            #     parameters=[{'imu_topic': 'imu/filtered'}]
+            # ),
+
             Node(
                 package='my_robot_kinematic',
                 executable='state_estimate',
