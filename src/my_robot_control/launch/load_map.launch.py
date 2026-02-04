@@ -2,12 +2,21 @@
 import os
 from launch import LaunchDescription
 from launch_ros.actions import Node
-from launch.actions import TimerAction, ExecuteProcess
+from launch.actions import TimerAction, ExecuteProcess, DeclareLaunchArgument , TimerAction
+from launch.substitutions import LaunchConfiguration
+from ament_index_python.packages import get_package_share_directory
 import time
 
 def generate_launch_description():
-
-    map_yaml = "/home/vietle9204/robot_ws/src/my_robot_control/maps/my_map.yaml"
+    default_map = os.path.join(
+                get_package_share_directory("my_robot_control"), "map", "my_map.yaml"
+            )
+    
+    map_yaml = DeclareLaunchArgument(
+            'map_yaml',
+            default_value=default_map,
+            description='path to file map .yaml'
+        )
 
     # 1. Launch map_server
     map_server_node = Node(
@@ -15,7 +24,7 @@ def generate_launch_description():
         executable='map_server',
         name='map_server',
         output='screen',
-        parameters=[{'yaml_filename': map_yaml}],
+        parameters=[{'yaml_filename': LaunchConfiguration('map_yaml')}],
     )
 
     # 2. Launch AMCL
@@ -61,6 +70,7 @@ def generate_launch_description():
     call_load_map_timer = TimerAction(period=10.0, actions=[call_load_map])
 
     return LaunchDescription([
+        map_yaml,
         map_server_node,
         amcl_node,
         lifecycle_manager_node,

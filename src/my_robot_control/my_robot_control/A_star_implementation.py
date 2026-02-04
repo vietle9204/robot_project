@@ -152,7 +152,9 @@ class AStarNode(Node):
 
         # ---------- load yaml + pgm ----------
         pkg_path = get_package_share_directory('my_robot_control')
-        yaml_path = os.path.join(pkg_path, 'maps', 'my_map.yaml')
+        default_yaml_path = os.path.join(pkg_path, 'maps', 'my_map.yaml')
+        self.declare_parameter('map_file', default_yaml_path)
+        yaml_path = self.get_parameter('map_file').value
         self.get_logger().info(f"Loading map from: {yaml_path}")
 
         if not os.path.exists(yaml_path):

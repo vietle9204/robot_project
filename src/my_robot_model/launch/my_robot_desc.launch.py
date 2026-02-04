@@ -68,6 +68,13 @@ def generate_launch_description():
             prefix='xterm -e',
         ),
 
+        Node(
+            package='my_robot_kinematic',
+            executable='scanToCloud',
+            name='scanToCloud',
+            output='screen',
+        ),
+
         # ====== odometry =====
 
         TimerAction(

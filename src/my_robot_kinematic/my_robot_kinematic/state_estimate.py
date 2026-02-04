@@ -57,9 +57,10 @@ class state_estimate(Node):
 
         self.create_subscription(TwistStamped, self.vel_encoder_topic, self.encoder_callback, qos)
         self.create_subscription(Imu, self.imu_topic, self.imu_callback, qos)
-        # self.create_subscription(PoseWithCovarianceStamped, '/initialpose', self.initialpose_callback, qos)
         # self.create_subscription(MagneticField, "/mag/filtered", self.cb_mag, qos)
-        # self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.amcl_cb, qos)
+        # self.create_subscription(PoseWithCovarianceStamped, '/initialpose', self.initialpose_callback, qos)
+        self.create_subscription(Odometry, '/kiss/odometry', self.lidar_odom_cb, qos)
+
         self.odom_pub = self.create_publisher(Odometry, self.odometry_topic, qos)
 
         # Timer 50 Hz
@@ -80,42 +81,48 @@ class state_estimate(Node):
         # state transition (identity for small-dt model; A will remain I)
         self.A_k = np.zeros((5,5))
 
-        # # input in KF: will be set in KF(dt)
-        # self.G_k = np.zeros((3,2))
-
-        # # control u = [v, omega]
-        # self.u_k = np.zeros((2,1))
-
         # process noise covariance 
-        self.Q_k = np.diag([0.01, 0.01, 0.01, 0.922, 2.07])
+        self.Q_k = np.diag([0.002, 0.02, 0.002, 0.922, 2.07])
 
         # state covariance
-        self.P_k = np.diag([0.01, 0.01, 0.01, 0.9, 0.9])
+        self.P_k = np.diag([0.001, 0.001, 0.001, 9.9, 9.9])
 
-        # # measurement z (yaw from IMU)
-        # self.z_k = np.zeros((4,1))
 
-        # # measurement matrix H: measure yaw only
-        # self.H_k =  np.zeros((4,9))
+    # def initialpose_callback(self, msg: PoseWithCovarianceStamped):
+    #     q = msg.pose.pose.orientation
+    #     _, _, yaw = euler_from_quaternion(q.x, q.y, q.z, q.w)
+    #     yaw = angle_normalize(yaw)
 
-        # # measurement noise covariance 
-        # self.R_k = np.diag([0.01, 0.01, 0.01, 0.01])
+    #     self.x_k[0,0] = msg.pose.pose.position.x
+    #     self.x_k[1,0] = msg.pose.pose.position.y
+    #     self.x_k[2,0] = yaw
 
-    def initialpose_callback(self, msg: PoseWithCovarianceStamped):
-        q = msg.pose.pose.orientation
-        _, _, yaw = euler_from_quaternion(q.x, q.y, q.z, q.w)
+    #     self.get_logger().info(f"Initial pose set: x={self.x_k[0,0]:.2f}, y={self.x_k[1,0]:.2f}, yaw={self.x_k[2,0]:.2f}")
+
+    #     self.P_k = np.diag([0.01, 0.01, 0.01, 0.9, 0.9])
+
+    #     self.publish_odom(msg.header.stamp)
+
+    def lidar_odom_cb(self, msg: Odometry):
+        # if math.fabs(msg.twist.twist.linear.x) <= 0.01 or math.fabs(msg.twist.twist.angular.z) <= 0.01:
+        #     return
+        yaw = 2.0 * math.atan2(msg.pose.pose.orientation.z, msg.pose.pose.orientation.w)
         yaw = angle_normalize(yaw)
-
-        self.x_k[0,0] = msg.pose.pose.position.x
-        self.x_k[1,0] = msg.pose.pose.position.y
-        self.x_k[2,0] = yaw
-
-        self.get_logger().info(f"Initial pose set: x={self.x_k[0,0]:.2f}, y={self.x_k[1,0]:.2f}, yaw={self.x_k[2,0]:.2f}")
-
-        self.P_k = np.diag([0.01, 0.01, 0.01, 0.9, 0.9])
+        z = np.array([[msg.pose.pose.position.x],
+                      [msg.pose.pose.position.y],
+                      [yaw],])
+        
+        H = np.array([[1.0, 0.0, 0.0, 0.0, 0.0],
+                      [0.0, 1.0, 0.0, 0.0, 0.0],
+                      [0.0, 0.0, 1.0, 0.0, 0.0]])
+        
+        R = np.array([[0.05, 0.00, 0.00],
+                      [0.00, 0.05, 0.00],
+                      [0.00, 0.00, 0.05]])
+  
+        self.EKF_update(z, H, R, 2)
 
         self.publish_odom(msg.header.stamp)
-
 
     def imu_callback(self, msg: Imu):
         stamp = msg.header.stamp
@@ -150,8 +157,8 @@ class state_estimate(Node):
         H = np.array([[0.0, 0.0, 1.0, 0.0, 0.0],
                       [0.0, 0.0, 0.0, 0.0, 1.0]])
 
-        R = np.array([[0.01, 0.00],
-                      [0.00, 0.003]])
+        R = np.array([[0.03, 0.00],
+                      [0.00, 0.0025]])
   
         self.EKF_update(z, H, R, 0)
 
@@ -173,13 +180,13 @@ class state_estimate(Node):
             self.mag_last_time = stamp
             return
 
-        dt = ((stamp.sec - self.mag_last_time.sec) +
-              (stamp.nanosec - self.mag_last_time.nanosec) * 1e-9)
-        # guard dt
-        if dt <= 0.0:
-            # ignore bad dt (too large or non-positive)
-            self.mag_last_time = stamp
-            return
+        # dt = ((stamp.sec - self.mag_last_time.sec) +
+        #       (stamp.nanosec - self.mag_last_time.nanosec) * 1e-9)
+        # # guard dt
+        # if dt <= 0.0:
+        #     # ignore bad dt (too large or non-positive)
+        #     self.mag_last_time = stamp
+        #     return
         self.mag_last_time = stamp
 
         #================
@@ -207,20 +214,20 @@ class state_estimate(Node):
 
     def encoder_callback(self, msg: TwistStamped):
         # prefer using the msg.header.stamp if available for consistent timing
-        stamp = msg.header.stamp
-        if self.last_time is None:
-            self.last_time = stamp
-            # set initial yaw if imu already arrived? but keep simple
-            return
+        # stamp = msg.header.stamp
+        # if self.last_time is None:
+        #     self.last_time = stamp
+        #     # set initial yaw if imu already arrived? but keep simple
+        #     return
 
-        dt = ((stamp.sec - self.last_time.sec) +
-              (stamp.nanosec - self.last_time.nanosec) * 1e-9)
-        # guard dt
-        if dt <= 0.0:
-            # ignore bad dt (too large or non-positive)
-            self.last_time = stamp
-            return
-        self.last_time = stamp
+        # dt = ((stamp.sec - self.last_time.sec) +
+        #       (stamp.nanosec - self.last_time.nanosec) * 1e-9)
+        # # guard dt
+        # if dt <= 0.0:
+        #     # ignore bad dt (too large or non-positive)
+        #     self.last_time = stamp
+        #     return
+        # self.last_time = stamp
         
         z = np.array([[float(msg.twist.linear.x)],
                       [float(msg.twist.angular.z)]]) 
@@ -236,38 +243,13 @@ class state_estimate(Node):
         self.publish_odom(msg.header.stamp)
 
 
-    # def amcl_cb(self, msg: PoseWithCovarianceStamped):
-    #     q = msg.pose.pose.orientation
-    #     yaw = 2.0 * math.atan2(q.z, q.w)
-    #     yaw = angle_normalize(yaw)
-
-    #     z = np.array([[msg.pose.pose.position.x],
-    #                   [msg.pose.pose.position.y],
-    #                   [yaw]])
-        
-    #     self.get_logger().info(f"AMCL pose: x={z[0,0]:.2f}, y={z[1,0]:.2f}, yaw={z[2,0]:.2f}")
-        
-    #     H = np.array([[1.0, 0.0, 0.0, 0.0, 0.0],
-    #                   [0.0, 1.0, 0.0, 0.0, 0.0],
-    #                   [0.0, 0.0, 1.0, 0.0, 0.0]])
-
-    
-    #     R = np.array([[msg.pose.covariance[0], msg.pose.covariance[1], 0.00],
-    #                   [msg.pose.covariance[6], msg.pose.covariance[7], 0.00],
-    #                   [0.00, 0.00, msg.pose.covariance[35]]])
-  
-    #     self.EKF_update(z, H, R, 2)
-
-    #     self.publish_odom(msg.header.stamp)
-
-
     def EKF_prediction(self):
         dt = self.timer_period
         #================
         v = float(self.x_k[3, 0])
-        if math.fabs(v)  < 0.0015: v = 0.0
+        if math.fabs(v)  < 0.002: v = 0.0
         w = float(self.x_k[4, 0])
-        if math.fabs(w)  < 0.0015: w = 0.0
+        if math.fabs(w)  < 0.002: w = 0.0
         #================
 
         theta = float(self.x_k[2,0])
@@ -286,8 +268,8 @@ class state_estimate(Node):
             # forward kinematics:  x_k_f = f(x,k) 
             self.x_k[0,0] += v*math.cos(theta)*dt
             self.x_k[1,0] += v*math.sin(theta)*dt
-            self.x_k[2,0] += w*dt
-            self.x_k[2,0] = angle_normalize(float(self.x_k[2,0]))
+            self.x_k[2,0] =  theta_f
+        
         else:
             # Jacobians
             self.A_k = np.array([
