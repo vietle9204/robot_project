@@ -62,8 +62,8 @@ class VFHNode(Node):
         # robot parameter
         self.declare_parameter('safety_dist', 0.25)
         self.declare_parameter('influence_dist', 1.0)
-        self.declare_parameter('max_speed', 0.8)
-        self.declare_parameter('max_omega', 1.3)
+        self.declare_parameter('max_speed', 0.5)
+        self.declare_parameter('max_omega', 1.0)
         self.declare_parameter('sector_count', 72)
         self.declare_parameter('goal_tolerance', 0.05)
         # self.robot_radius = 0.11
@@ -157,7 +157,7 @@ class VFHNode(Node):
 
         ranges = np.array(scan.ranges, dtype=np.float32)    # replace inf/nan
         ranges = np.where(np.isfinite(ranges), ranges, scan.range_max)
-        ranges = np.where(ranges > 0.15, ranges, scan.range_max)
+        ranges = np.where(ranges > 0.14, ranges, scan.range_max)
         angles = np.linspace(scan.angle_min, scan.angle_max, ranges.size)
         if self.reverse_lidar:
             # angles = np.where(angles > math.pi, angles - 2*math.pi, angles) # normalize to [-pi, pi]

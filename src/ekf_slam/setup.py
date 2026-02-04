@@ -1,8 +1,6 @@
 from setuptools import find_packages, setup
-from glob import glob
-import os
 
-package_name = 'my_robot_control'
+package_name = 'ekf_slam'
 
 setup(
     name=package_name,
@@ -12,8 +10,6 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        ('share/' + package_name + '/launch', glob('launch/*.launch.py')),
-        ('share/' + package_name + '/maps', glob('maps/*')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -28,9 +24,9 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'vfh_alg_test = my_robot_control.vfh_alg_test:main',
-            'A_star = my_robot_control.A_star_implementation:main',
-            'my_robot_nav = my_robot_control.my_robot_nav:main'
+            'ekf_slam = ekf_slam.ekf_slam:main',
+            'map_to_tf = ekf_slam.map_to_tf:main',
+            'map_draw = ekf_slam.map_draw:main',
         ],
     },
 )
