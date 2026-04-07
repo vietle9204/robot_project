@@ -113,8 +113,8 @@ class OdomFromVelEncoder(Node):
             depth=10
         )
 
-        self.declare_parameter('vel_encoder_topic', '/vel_encoder/data')
-        self.declare_parameter('odometry_topic', '/odom00')
+        self.declare_parameter('vel_encoder_topic', 'robot1/vel_encoder/data')
+        self.declare_parameter('odometry_topic', '/odometry/data')
         self.odometry_topic = self.get_parameter('odometry_topic').get_parameter_value().string_value
         self.vel_encoder_topic = self.get_parameter('vel_encoder_topic').get_parameter_value().string_value
 
@@ -158,7 +158,7 @@ class OdomFromVelEncoder(Node):
 
         odom = Odometry()
         odom.header.stamp = current_time
-        odom.header.frame_id = "odom0"
+        odom.header.frame_id = "odom"
         odom.child_frame_id = "base_link"
 
         odom.pose.pose.position.x = self.x

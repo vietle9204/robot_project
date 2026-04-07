@@ -52,10 +52,10 @@ class VFHNode(Node):
         self.get_logger().info("VFH controller node initialized.")
 
     def declare_param(self):
-        self.declare_parameter('scan_topic', '/scan')
+        self.declare_parameter('scan_topic', '/robot1/scan')
         self.declare_parameter('odom_topic', '/odometry/data')
         self.declare_parameter('goal_topic', '/goal_pose')
-        self.declare_parameter('cmd_vel_topic', '/cmd_vel')
+        self.declare_parameter('cmd_vel_topic', '/robot1/cmd_vel')
 
         self.declare_parameter('use_Stamped', False)
 

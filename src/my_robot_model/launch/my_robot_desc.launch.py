@@ -57,6 +57,7 @@ def generate_launch_description():
             executable='jointState_from_vel_encoder',
             name='jointState_from_vel_encoder',
             output='screen',
+            parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
         ),
 
         # ====== imu filter =====
@@ -66,6 +67,7 @@ def generate_launch_description():
             name='imu_filter',
             output='screen',
             prefix='xterm -e',
+            parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
         ),
 
         Node(
@@ -73,6 +75,7 @@ def generate_launch_description():
             executable='scanToCloud',
             name='scanToCloud',
             output='screen',
+            parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
         ),
 
         # ====== odometry =====
@@ -91,18 +94,20 @@ def generate_launch_description():
 
             # Node(
             #     package='my_robot_kinematic',
-            #     executable='odometry_ekf',
+            #     executable='odometry_kf',
             #     name='odometry_kf',
             #     output='screen',
-            #     parameters=[{'imu_topic': 'imu/filtered'}]
+            #     parameters=[{'imu_topic': 'imu/filtered'},
+            #                  {'use_sim_time': LaunchConfiguration('use_sim_time')}]
             # ),
 
             Node(
                 package='my_robot_kinematic',
-                executable='state_estimate',
-                name='state_estimate',
+                executable='state_estimate_UKF',
+                name='state_estimate_UKF',
                 output='screen',
-                parameters=[{'imu_topic': 'imu/filtered'}]
+                parameters=[#{'imu_topic': 'imu/filtered'},
+                            {'use_sim_time': LaunchConfiguration('use_sim_time')}]
             ),
         ]),
         
@@ -125,7 +130,8 @@ def generate_launch_description():
             executable="odom_to_tf",
             name="odom_to_tf",
             output="screen",
-            parameters=[config_file_path],
+            parameters=[{config_file_path},
+                        {'use_sim_time': LaunchConfiguration('use_sim_time')}],
             remappings=[],
             condition=IfCondition(LaunchConfiguration('publish_tf'))
         )

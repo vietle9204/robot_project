@@ -1,0 +1,27 @@
+{
+	"folders": [
+		{
+			"name": "robot_ws",
+			"path": "."
+		}
+	],
+	"settings": {
+		"python.autoComplete.extraPaths": [
+			"/home/vietle9204/ros2_2wd_ws/install/robot_2wd_urdf/lib/python3.12/site-packages",
+			"/home/vietle9204/ros2_2wd_ws/install/robot_2wd_gazebo/lib/python3.12/site-packages",
+			"/home/vietle9204/ros2_2wd_ws/install/robot_2wd_control/lib/python3.12/site-packages",
+			"/home/vietle9204/ros2_2wd_ws/install/model/lib/python3.12/site-packages",
+			"/home/vietle9204/m2bot_ws/install/m2bot_model/lib/python3.12/site-packages",
+			"/opt/ros/jazzy/lib/python3.12/site-packages"
+		],
+		"python.analysis.extraPaths": [
+			"/home/vietle9204/ros2_2wd_ws/install/robot_2wd_urdf/lib/python3.12/site-packages",
+			"/home/vietle9204/ros2_2wd_ws/install/robot_2wd_gazebo/lib/python3.12/site-packages",
+			"/home/vietle9204/ros2_2wd_ws/install/robot_2wd_control/lib/python3.12/site-packages",
+			"/home/vietle9204/ros2_2wd_ws/install/model/lib/python3.12/site-packages",
+			"/home/vietle9204/m2bot_ws/install/m2bot_model/lib/python3.12/site-packages",
+			"/opt/ros/jazzy/lib/python3.12/site-packages"
+		],
+		"ROS2.distro": "jazzy"
+	}
+}

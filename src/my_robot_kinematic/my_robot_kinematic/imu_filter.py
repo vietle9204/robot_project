@@ -81,7 +81,7 @@ class ImuFilterNode(Node):
 
         # --------------- PARAMETER ----------------
         self.declare_parameter("fc", 3.0)   # Hz
-        self.declare_parameter("fs", 15.0)  # Hz (raw IMU rate)
+        self.declare_parameter("fs", 13.0)  # Hz (raw IMU rate)
 
         fc = self.get_parameter("fc").value
         fs = self.get_parameter("fs").value
@@ -103,8 +103,8 @@ class ImuFilterNode(Node):
         self.mz = ButterworthFilter2(fc, fs)
 
         # SUBSCRIBER & PUBLISHER
-        self.sub = self.create_subscription(Imu, "/imu/data", self.cb_imu, qos)
-        self.sub_mag = self.create_subscription(MagneticField, "/mag/data", self.cb_mag, qos)
+        self.sub = self.create_subscription(Imu, "robot1/imu/data", self.cb_imu, qos)
+        self.sub_mag = self.create_subscription(MagneticField, "/robot1/mag/data", self.cb_mag, qos)
         self.pub = self.create_publisher(Imu, "/imu/filtered", 10)
         self.pub_mag = self.create_publisher(MagneticField, "/mag/filtered", 10)
 

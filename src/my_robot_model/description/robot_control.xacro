@@ -61,6 +61,10 @@
       <publish_odom>true</publish_odom>
       <publish_odom_tf>false</publish_odom_tf>
       <publish_wheel_tf>false</publish_wheel_tf>
+      <max_linear_acceleration>1.5</max_linear_acceleration>
+      <max_angular_acceleration>2.0</max_angular_acceleration>
+      <max_linear_velocity>1.5</max_linear_velocity>
+      <max_angular_velocity>2.5</max_angular_velocity>
     </plugin>
   </gazebo>
 

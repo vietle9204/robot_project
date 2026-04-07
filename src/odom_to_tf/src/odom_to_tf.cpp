@@ -18,7 +18,7 @@ public:
     child_frame_id_ = this->declare_parameter("child_frame_id", std::string(""));
     odom_topic = this->declare_parameter("odom_topic", std::string("/odom/perfect"));
     RCLCPP_INFO(this->get_logger(), "odom_topic set to %s", odom_topic.c_str());
-    inverse_tf_ = this->declare_parameter("inverse_tf_", false);
+    inverse_tf_ = this->declare_parameter("inverse_tf", false);
     use_original_timestamp_ = this->declare_parameter("use_original_timestamp", false);
 
     if (frame_id_ != "")
@@ -39,8 +39,17 @@ public:
       RCLCPP_INFO(this->get_logger(), "child_frame_id was not set. The child_frame_id of the odom "
                                       "message will be used.");
     }
-    sub_ = this->create_subscription<nav_msgs::msg::Odometry>(odom_topic, rclcpp::SensorDataQoS(),
-                                                              std::bind(&OdomToTF::odomCallback, this, _1));
+    
+    auto qos = rclcpp::QoS(rclcpp::KeepLast(100))
+              .reliability(RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT)
+              .durability(RMW_QOS_POLICY_DURABILITY_VOLATILE);
+
+    sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
+        odom_topic,
+        qos,
+        std::bind(&OdomToTF::odomCallback, this, _1)
+    );
+    
     tfb_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
   }
 
@@ -64,9 +73,6 @@ private:
     {
       tfs_.header.frame_id = frame_id_ != "" ? frame_id_ : msg->header.frame_id;
       tfs_.child_frame_id = child_frame_id_ != "" ? child_frame_id_ : msg->child_frame_id;
-      // tfs_.header.stamp = msg->header.stamp;
-      // tfs_.header.frame_id = frame_id_;
-      // tfs_.child_frame_id = child_frame_id_;
       tfs_.transform.translation.x = msg->pose.pose.position.x;
       tfs_.transform.translation.y = msg->pose.pose.position.y;
       tfs_.transform.translation.z = msg->pose.pose.position.z;

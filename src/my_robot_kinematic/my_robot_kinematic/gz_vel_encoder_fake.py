@@ -72,7 +72,14 @@ from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from geometry_msgs.msg import TwistStamped
 
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 
+qos = QoSProfile(
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    durability=DurabilityPolicy.VOLATILE,
+    depth=10
+
+)
 class Encoder_vel(Node):
     def __init__(self):
         super().__init__('odometry_publisher')
@@ -84,14 +91,13 @@ class Encoder_vel(Node):
         
         # Publisher
         self.vel_encoder_pub = self.create_publisher(
-            TwistStamped, '/vel_encoder/data', 10
+            TwistStamped, '/robot1/vel_encoder/data', qos
         )
 
         # Params
         self.wheel_radius = 0.0325          # meters
         self.wheel_separation = 0.175       # meters
 
-        self.last_time = None
         self.stamp = None
 
         # Output message
@@ -116,13 +122,6 @@ class Encoder_vel(Node):
             self.get_logger().warn("JointState velocity has <2 elements")
             return
 
-        if self.last_time is None:
-            self.last_time = self.get_clock().now()
-            return
-
-        current_time = self.get_clock().now()
-        dt = (current_time - self.last_time).nanoseconds / 1e9
-        self.last_time = current_time
 
         # Wheel velocities
         wl = msg.velocity[0]

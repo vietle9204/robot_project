@@ -5,10 +5,15 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Global Options1
+        - /RobotModel1
         - /TF1
         - /LaserScan1
+        - /LaserScan1/Topic1
+        - /LaserScan1/Autocompute Value Bounds1
         - /MarkerArray1
-      Splitter Ratio: 0.5
+        - /PointCloud21
+        - /PointCloud21/Autocompute Value Bounds1
+      Splitter Ratio: 0.4345930218696594
     Tree Height: 853
 Visualization Manager:
   Class: ""
@@ -89,17 +94,17 @@ Visualization Manager:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-        laser:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
         left_wheel:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
         right_wheel:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot1_laser:
           Alpha: 1
           Show Axes: false
           Show Trail: false
@@ -137,8 +142,6 @@ Visualization Manager:
           Value: true
         imu_link:
           Value: true
-        laser:
-          Value: true
         left_wheel:
           Value: true
         map:
@@ -146,6 +149,8 @@ Visualization Manager:
         odom:
           Value: true
         right_wheel:
+          Value: true
+        robot1_laser:
           Value: true
       Marker Scale: 0.30000001192092896
       Name: TF
@@ -169,7 +174,7 @@ Visualization Manager:
                     {}
                 imu_link:
                   {}
-                laser:
+                robot1_laser:
                   {}
               left_wheel:
                 {}
@@ -192,7 +197,7 @@ Visualization Manager:
       Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
-      Max Intensity: 0
+      Max Intensity: 47
       Min Color: 0; 0; 0
       Min Intensity: 0
       Name: LaserScan
@@ -202,12 +207,12 @@ Visualization Manager:
       Size (m): 0.029999999329447746
       Style: Flat Squares
       Topic:
-        Depth: 5
+        Depth: 10
         Durability Policy: Volatile
         Filter size: 10
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /scan
+        History Policy: Keep All
+        Reliability Policy: Best Effort
+        Value: /robot1/scan
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
@@ -274,6 +279,39 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /ekf_slam/map
       Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz_default_plugins/PointCloud2
+      Color: 255; 255; 255
+      Color Transformer: Intensity
+      Decay Time: 0
+      Enabled: false
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Max Intensity: 47
+      Min Color: 0; 0; 0
+      Min Intensity: 0
+      Name: PointCloud2
+      Position Transformer: XYZ
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.029999999329447746
+      Style: Flat Squares
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /scan/cloudpoints
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: false
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -302,16 +340,16 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 27.905780792236328
+      Distance: 16.689693450927734
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -3.9781622886657715
-        Y: 0.08508279174566269
-        Z: -1.295171856880188
+        X: 1.3737454414367676
+        Y: -0.9274653792381287
+        Z: -1.1778943538665771
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
@@ -320,7 +358,7 @@ Visualization Manager:
       Pitch: 1.5697963237762451
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 3.3503975868225098
+      Yaw: 1.860397458076477
     Saved: ~
 Window Geometry:
   Displays:
@@ -328,7 +366,7 @@ Window Geometry:
   Height: 1011
   Hide Left Dock: false
   Hide Right Dock: false
-  QMainWindow State: 000000ff00000000fd0000000100000000000001a600000395fc0200000002fb000000100044006900730070006c006100790073010000003f00000395000000cc00fffffffb0000000c00430061006d0065007200610100000270000001640000000000000000000005920000039500000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd0000000100000000000002b200000395fc0200000002fb000000100044006900730070006c006100790073010000003f00000395000000cc00fffffffb0000000c00430061006d0065007200610100000270000001640000000000000000000004860000039500000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Width: 1854
   X: 66
   Y: 32

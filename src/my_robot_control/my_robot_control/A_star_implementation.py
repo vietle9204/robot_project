@@ -128,7 +128,7 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
-from nav_msgs.msg import Path, Odometry
+from nav_msgs.msg import Path, Odometry, OccupancyGrid
 import yaml
 import numpy as np
 from PIL import Image
@@ -150,62 +150,72 @@ class AStarNode(Node):
     def __init__(self):
         super().__init__('a_star_node')
 
-        # ---------- load yaml + pgm ----------
-        pkg_path = get_package_share_directory('my_robot_control')
-        default_yaml_path = os.path.join(pkg_path, 'maps', 'my_map.yaml')
-        self.declare_parameter('map_file', default_yaml_path)
-        yaml_path = self.get_parameter('map_file').value
-        self.get_logger().info(f"Loading map from: {yaml_path}")
+        # # ---------- load yaml + pgm ----------
+        # pkg_path = get_package_share_directory('my_robot_control')
+        # default_yaml_path = os.path.join(pkg_path, 'maps', 'my_map.yaml')
+        # self.declare_parameter('map_file', default_yaml_path)
+        # yaml_path = self.get_parameter('map_file').value
+        # self.get_logger().info(f"Loading map from: {yaml_path}")
 
-        if not os.path.exists(yaml_path):
-            self.get_logger().error(f"Map file not found at: {yaml_path}")
-            raise FileNotFoundError(f"Map file not found: {yaml_path}")
+        # if not os.path.exists(yaml_path):
+        #     self.get_logger().error(f"Map file not found at: {yaml_path}")
+        #     raise FileNotFoundError(f"Map file not found: {yaml_path}")
 
-        with open(yaml_path, 'r') as file:
-            map_data = yaml.safe_load(file)
+        # with open(yaml_path, 'r') as file:
+        #     map_data = yaml.safe_load(file)
 
-        # ensure pgm path resolves relative to yaml
-        pgm_path = map_data.get('image')
-        if not os.path.isabs(pgm_path):
-            pgm_path = os.path.join(os.path.dirname(yaml_path), pgm_path)
-        pgm_path = os.path.normpath(pgm_path)
-        if not os.path.exists(pgm_path):
-            self.get_logger().error(f"PGM file not found at: {pgm_path}")
-            raise FileNotFoundError(f"PGM file not found: {pgm_path}")
+        # # ensure pgm path resolves relative to yaml
+        # pgm_path = map_data.get('image')
+        # if not os.path.isabs(pgm_path):
+        #     pgm_path = os.path.join(os.path.dirname(yaml_path), pgm_path)
+        # pgm_path = os.path.normpath(pgm_path)
+        # if not os.path.exists(pgm_path):
+        #     self.get_logger().error(f"PGM file not found at: {pgm_path}")
+        #     raise FileNotFoundError(f"PGM file not found: {pgm_path}")
 
-        self.resolution = float(map_data['resolution'])
-        self.origin = map_data['origin']  # [x, y, yaw]
-        self.occupied_thresh = float(map_data.get('occupied_thresh', 0.65))
-        self.free_thresh = float(map_data.get('free_thresh', 0.196))
+        # self.resolution = float(map_data['resolution'])
+        # self.origin = map_data['origin']  # [x, y, yaw]
+        # self.occupied_thresh = float(map_data.get('occupied_thresh', 0.65))
+        # self.free_thresh = float(map_data.get('free_thresh', 0.196))
 
-        # load image -> normalize
-        img = Image.open(pgm_path).convert('L')
-        img = np.array(img, dtype=np.float32) / 255.0
-        self.rows, self.cols = img.shape  # rows = height, cols = width
+        # # load image -> normalize
+        # img = Image.open(pgm_path).convert('L')
+        # img = np.array(img, dtype=np.float32) / 255.0
+        # self.rows, self.cols = img.shape  # rows = height, cols = width
         
-        # build grid:
-        self.grid = np.zeros((self.rows, self.cols), dtype=np.int8)
-        self.grid[img >= self.occupied_thresh] = 0   #free
-        self.grid[img <= self.free_thresh] = 1      #occoupied
-        self.grid[(img > self.free_thresh) & (img < self.occupied_thresh)] = -1
-        # flip vertically to match world->grid convention used later
-        self.grid = np.flipud(self.grid)
-        # self.grid = np.fliplr(self.grid)
+        # # build grid:
+        # self.grid = np.zeros((self.rows, self.cols), dtype=np.int8)
+        # self.grid[img >= self.occupied_thresh] = 0   #free
+        # self.grid[img <= self.free_thresh] = 1      #occoupied
+        # self.grid[(img > self.free_thresh) & (img < self.occupied_thresh)] = -1
+        # # flip vertically to match world->grid convention used later
+        # self.grid = np.flipud(self.grid)
+        # # self.grid = np.fliplr(self.grid)
 
-        # mở rộng ô vật cản
-        kernel = np.ones((5,5), np.uint8)
-        obs = (self.grid == 1).astype(np.uint8)
-        inflated = cv2.dilate(obs, kernel)
-        mask = (inflated == 1) & (self.grid == 0)
-        self.grid[mask] = 1
+        # # mở rộng ô vật cản
+        # kernel = np.ones((5,5), np.uint8)
+        # obs = (self.grid == 1).astype(np.uint8)
+        # inflated = cv2.dilate(obs, kernel)
+        # mask = (inflated == 1) & (self.grid == 0)
+        # self.grid[mask] = 1
 
-        self.get_logger().info(f"Map loaded: rows={self.rows}, cols={self.cols}, res={self.resolution}, origin={self.origin}")
+        # self.get_logger().info(f"Map loaded: rows={self.rows}, cols={self.cols}, res={self.resolution}, origin={self.origin}")
 
         # ---------- ROS interface ----------
         self.path_pub = self.create_publisher(Path, '/astar_path', 10)
         # self.create_subscription(Odometry, '/odometry/data', self.odom_cb, qos)
-        self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.amcl_cb, 10)
+        self.create_subscription(PoseWithCovarianceStamped, '/ekf_slam/pose', self.amcl_cb, 10)
         self.create_subscription(PoseStamped, '/goal_pose', self.goal_callback, 10)
+
+        self.create_subscription(
+            OccupancyGrid,
+            '/map',
+            self.map_callback,
+            qos
+        )
+
+        self.map_received = False
+        
 
         # start = odom, goal from topic
         self.start = None
@@ -221,8 +231,9 @@ class AStarNode(Node):
     def world_to_grid(self, x, y):
         gx = int((x - self.origin[0]) / self.resolution)
         gy = int((y - self.origin[1]) / self.resolution)
-        # flip vertical
-        # gy = self.rows - gy - 1
+
+        gy = self.rows - gy - 1
+
         return gx, gy
 
     # grid -> world (center of cell)
@@ -231,8 +242,55 @@ class AStarNode(Node):
         # y = (self.rows - gy - 1) * self.resolution + self.origin[1] + self.resolution / 2.0
         # return x, y
         x = gx * self.resolution + self.origin[0] + self.resolution / 2
-        y = gy * self.resolution + self.origin[1] + self.resolution / 2
+        y = (self.rows - gy - 1) * self.resolution + self.origin[1] + self.resolution / 2
         return x, y
+    
+    def map_callback(self, msg: OccupancyGrid):
+
+        # if self.map_received:
+        #     return
+
+        self.get_logger().info("Received map from /map topic")
+
+        self.resolution = msg.info.resolution
+        self.origin = [
+            msg.info.origin.position.x,
+            msg.info.origin.position.y,
+            0.0
+        ]
+
+        self.cols = msg.info.width
+        self.rows = msg.info.height
+
+        data = np.array(msg.data, dtype=np.int8).reshape((self.rows, self.cols))
+
+        # ROS occupancy convention
+        # -1 unknown
+        # 0 free
+        # 100 occupied
+
+        self.grid = np.zeros((self.rows, self.cols), dtype=np.int8)
+
+        self.grid[data == 0] = 0        # free
+        self.grid[data == 100] = 1      # obstacle
+        self.grid[data == -1] = -1      # unknown
+
+        # flip vertical to match coordinate
+        self.grid = np.flipud(self.grid)
+
+        # obstacle inflation
+        kernel = np.ones((5,5), np.uint8)
+        obs = (self.grid == 1).astype(np.uint8)
+        inflated = cv2.dilate(obs, kernel)
+
+        mask = (inflated == 1) & (self.grid == 0)
+        self.grid[mask] = 1
+
+        self.map_received = True
+
+        self.get_logger().info(
+            f"Map received: rows={self.rows}, cols={self.cols}, res={self.resolution}"
+        )
 
     # def odom_cb(self, msg: Odometry):
     #     # update start from odometry
@@ -259,6 +317,9 @@ class AStarNode(Node):
             self._lock.release()
 
     def try_plan(self):
+        if not self.map_received:
+            self.get_logger().warn("Map not received yet.")
+            return
         # require both start (odom) and goal
         if self.start is None:
             self.get_logger().warn("No amcl_pose . waitting")

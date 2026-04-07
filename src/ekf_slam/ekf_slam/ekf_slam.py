@@ -69,7 +69,7 @@ class EKFSLAM(Node):
         self.P = np.eye(3) * 1e-3
         # Noise
         self.Q = np.diag([0.002, 0.002, 0.002])  # motion noise
-        self.R = np.diag([0.02, 0.02])        # measurement noise
+        self.R = np.diag([0.05, 0.05])        # measurement noise
         # lamarks
         self.num_landmarks = 0
         self.max_landmarks = 60     # giới hạn số landmark
@@ -81,8 +81,8 @@ class EKFSLAM(Node):
         self.new_features = []
 
         # motion noise params
-        self.a1 = 0.5
-        self.a2 = 0.5
+        self.a1 = 0.9
+        self.a2 = 0.9
         self.beta = 0.0
 
     def declare_param(self):
@@ -186,26 +186,25 @@ class EKFSLAM(Node):
     def scan_cb(self, scan: LaserScan):
         # 1. Nhận scan mới → trích đặc trưng
         features = self.extract_features_from_scan(scan)
-        if len(features) == 0: return
+        if len(features) > 0:
 
-        # 2. Data association
-        self.association(features)
+            # 2. Data association
+            self.association(features)
 
-        # 3. EKF UPDATE (landmark đã quan sát)
-        for z, lm_id in zip(self.z, self.z_lm_ids):
-            self.update(z, lm_id)
-        self.x[2, 0] = normalize_angle(self.x[2, 0])
+            # 3. EKF UPDATE (landmark đã quan sát)
+            for z, lm_id in zip(self.z, self.z_lm_ids):
+                self.update(z, lm_id)
+            self.x[2, 0] = normalize_angle(self.x[2, 0])
 
-        # 4. Thêm landmark mới
-        for z in self.new_features:
-            if self.num_landmarks >= self.max_landmarks:
-                self.remove_landmark(np.argmin(self.landmark_score))
-            self.add_landmark(z)
+            # 4. Thêm landmark mới
+            for z in self.new_features:
+                if self.num_landmarks >= self.max_landmarks:
+                    self.remove_landmark(np.argmin(self.landmark_score))
+                self.add_landmark(z)
 
         # 5. publish results
-        if len(features) >1:
-            self.publish_pose(scan.header.stamp)
-            self.publish_map(scan.header.stamp)
+        self.publish_pose(scan.header.stamp)
+        self.publish_map(scan.header.stamp)
         self.get_logger().info(f"EKF-SLAM: num_landmarks={self.num_landmarks}, pose=({self.x[0,0]:.4f}, {self.x[1,0]:.4f}, {self.x[2,0]:.4f})")
 
 
@@ -372,7 +371,7 @@ class EKFSLAM(Node):
         curv_pts = self.extract_curvature_points(
             scan,
             k=5,
-            curvature_threshold=0.2,
+            curvature_threshold=0.185,
             range_min=0.5,
             range_max=10.0
         )
@@ -388,11 +387,46 @@ class EKFSLAM(Node):
         features = [self.cluster_to_feature(c) for c in clusters]
         return features
 
+    # def extract_curvature_points(self, scan,
+    #                             k=5,
+    #                             curvature_threshold=0.175,
+    #                             range_min=0.5,
+    #                             range_max=10.0):
+    #     ranges = np.array(scan.ranges)
+    #     angles = scan.angle_min + np.arange(len(ranges)) * scan.angle_increment
+
+    #     valid = np.isfinite(ranges)
+    #     ranges = ranges[valid]
+    #     angles = angles[valid]
+
+    #     xs = ranges * np.cos(angles)
+    #     ys = ranges * np.sin(angles)
+
+    #     curv_points = []
+
+    #     for i in range(k, len(xs) - k):
+    #         if ranges[i] < range_min or ranges[i] > range_max:
+    #             continue
+    #         # if math.fabs(ranges[i] - np.min(ranges[i-k:i+k+1])) > 0.5:
+    #         #     continue
+    #         neighbors = np.stack([
+    #             xs[i-k:i+k+1],
+    #             ys[i-k:i+k+1]
+    #         ], axis=1)
+
+    #         curv = self.compute_curvature(neighbors)
+
+    #         if curv > curvature_threshold:
+    #             curv_points.append((ranges[i], angles[i]))
+
+    #     return curv_points
+
     def extract_curvature_points(self, scan,
                                 k=5,
-                                curvature_threshold=0.15,
+                                curvature_threshold=0.13,
                                 range_min=0.5,
                                 range_max=10.0):
+
         ranges = np.array(scan.ranges)
         angles = scan.angle_min + np.arange(len(ranges)) * scan.angle_increment
 
@@ -400,26 +434,58 @@ class EKFSLAM(Node):
         ranges = ranges[valid]
         angles = angles[valid]
 
-        xs = ranges * np.cos(angles)
-        ys = ranges * np.sin(angles)
+        if len(ranges) == 0:
+            return []
+
+        points = list(zip(ranges, angles))
+
+        clusters = []
+        cluster = [points[0]]
+
+        for i in range(1, len(points)):
+            db = abs(points[i][0] - points[i-1][0])
+
+            if db < 0.5:
+                cluster.append(points[i])
+            else:
+                clusters.append(cluster)
+                cluster = [points[i]]
+
+        clusters.append(cluster)
 
         curv_points = []
 
-        for i in range(k, len(xs) - k):
-            if ranges[i] < range_min or ranges[i] > range_max:
+        for cluster in clusters:
+            if len(cluster) < 2*k + 1:
                 continue
-            neighbors = np.stack([
-                xs[i-k:i+k+1],
-                ys[i-k:i+k+1]
-            ], axis=1)
+            ranges = np.array([p[0] for p in cluster])
+            angles = np.array([p[1] for p in cluster])
 
-            curv = self.compute_curvature(neighbors)
+            xs = ranges * np.cos(angles)
+            ys = ranges * np.sin(angles)
 
-            if curv > curvature_threshold:
-                curv_points.append((ranges[i], angles[i]))
+            for i in range(k, len(xs) - k):
+                if ranges[i] < range_min or ranges[i] > range_max:
+                    continue
+                neighbors = np.stack([
+                    xs[i-k:i+k+1],
+                    ys[i-k:i+k+1]
+                ], axis=1)
+
+                curv = self.compute_curvature(neighbors)
+
+                if curv > curvature_threshold:
+                    if i == k:
+                        for j in range(0, i):
+                            curv_points.append((ranges[j], angles[j]))
+
+                    curv_points.append((ranges[i], angles[i]))
+
+                    if i == len(xs) - k - 1:
+                        for j in range(i+1, len(xs)):
+                            curv_points.append((ranges[j], angles[j]))
 
         return curv_points
-
     
     def compute_curvature(self, points):
         """
@@ -451,7 +517,7 @@ class EKFSLAM(Node):
                 np.mean([p[0] for p in cl]) if cl else 0
             )
             if len(cl) >= min_size:
-                cl = self.filter_converged_points(cl, range_thresh)
+                # cl = self.filter_converged_points(cl, range_thresh)
                 final_clusters.append(cl)
 
         return final_clusters
@@ -474,9 +540,9 @@ class EKFSLAM(Node):
         return clusters
     
 
-    def filter_converged_points(self, cluster, range_thresh=0.5):
+    def filter_converged_points(self, cluster, range_thresh=1.0):
         ranges = [p[0] for p in cluster]
-        r_min = np.min(ranges)
+        r_min = np.mean(ranges)
 
         filtered = [
             p for p in cluster
@@ -496,15 +562,15 @@ class EKFSLAM(Node):
 
 
     def adaptive_min_cluster_size(self, r):
-        if r < 1.0: return 3
-        # if r < 3.0: return 2
+        if r < 1.0: return 4
+        if r < 3.0: return 2
         return 1
 
 
     # =========================
     # 5. DATA ASSOCIATION
     # =========================
-    def association(self, features, chi2_threshold=1.5):
+    def association(self, features, chi2_threshold=0.5):
         """
         features: list of np.array([r, b])
         """

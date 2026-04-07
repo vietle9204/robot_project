@@ -24,7 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'ekf_slam = ekf_slam.ekf_slam:main',
+            'ekf_slam = ekf_slam.ukf_slam:main',
             'map_to_tf = ekf_slam.map_to_tf:main',
             'map_draw = ekf_slam.map_draw:main',
         ],

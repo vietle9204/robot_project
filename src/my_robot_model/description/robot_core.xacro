@@ -77,8 +77,8 @@
     <surface>
       <friction>
         <ode>
-          <mu>1.0</mu>
-          <mu2>1.0</mu2>
+          <mu>2.0</mu>
+          <mu2>2.0</mu2>
         </ode>
       </friction>
     </surface>
@@ -88,8 +88,8 @@
   </xacro:inertial_cylinder>
 </link>
 <gazebo reference="left_wheel">
-  <mu1>1.0</mu1>
-  <mu2>1.0</mu2>
+  <mu1>2.0</mu1>
+  <mu2>2.0</mu2>
 </gazebo>
 
 <joint name="right_wheel_joint" type="continuous">
@@ -113,8 +113,8 @@
     <surface>
       <friction>
         <ode>
-          <mu>1.0</mu>
-          <mu2>1.0</mu2>
+          <mu>2.0</mu>
+          <mu2>2.0</mu2>
         </ode>
       </friction>
     </surface>
@@ -124,8 +124,8 @@
   </xacro:inertial_cylinder>
 </link>
 <gazebo reference="right_wheel">
-  <mu1>1.0</mu1>
-  <mu2>1.0</mu2>
+  <mu1>2.0</mu1>
+  <mu2>2.0</mu2>
 </gazebo>
 
 <joint name="caster_wheel_joint" type="fixed">

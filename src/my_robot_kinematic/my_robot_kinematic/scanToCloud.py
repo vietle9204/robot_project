@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 
 import rclpy
-from rclpy.node import Node
+from rclpy.node import Node, QoSProfile
 
 from sensor_msgs.msg import LaserScan, PointCloud2
 from laser_geometry import LaserProjection
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 
+qos = QoSProfile(
+    reliability=ReliabilityPolicy.RELIABLE,
+    durability=DurabilityPolicy.VOLATILE,
+    depth=20
+)
 
 class ScanToCloudPoints(Node):
     def __init__(self):
@@ -15,7 +21,7 @@ class ScanToCloudPoints(Node):
 
         self.sub = self.create_subscription(
             LaserScan,
-            '/scan',
+            '/robot1/scan',
             self.scan_callback,
             10
         )

@@ -48,9 +48,9 @@ class state_estimate(Node):
             depth=10
         )
 
-        self.declare_parameter('vel_encoder_topic', '/vel_encoder/data')
+        self.declare_parameter('vel_encoder_topic', 'robot1/vel_encoder/data')
         self.declare_parameter('odometry_topic', '/odometry/data')
-        self.declare_parameter('imu_topic', '/imu/data')
+        self.declare_parameter('imu_topic', 'robot1/imu/data')
         self.odometry_topic = self.get_parameter('odometry_topic').get_parameter_value().string_value
         self.vel_encoder_topic = self.get_parameter('vel_encoder_topic').get_parameter_value().string_value
         self.imu_topic = self.get_parameter('imu_topic').get_parameter_value().string_value
@@ -59,12 +59,12 @@ class state_estimate(Node):
         self.create_subscription(Imu, self.imu_topic, self.imu_callback, qos)
         # self.create_subscription(MagneticField, "/mag/filtered", self.cb_mag, qos)
         # self.create_subscription(PoseWithCovarianceStamped, '/initialpose', self.initialpose_callback, qos)
-        self.create_subscription(Odometry, '/kiss/odometry', self.lidar_odom_cb, qos)
+        # self.create_subscription(Odometry, '/kiss/odometry', self.lidar_odom_cb, qos)
 
         self.odom_pub = self.create_publisher(Odometry, self.odometry_topic, qos)
 
-        # Timer 50 Hz
-        self.timer_period = 0.02 #seconds
+        # Timer 100 Hz
+        self.timer_period = 0.01 #seconds
         self.timer = self.create_timer(self.timer_period, self.EKF_prediction)
 
         self.last_time = None
@@ -82,10 +82,10 @@ class state_estimate(Node):
         self.A_k = np.zeros((5,5))
 
         # process noise covariance 
-        self.Q_k = np.diag([0.002, 0.02, 0.002, 0.922, 2.07])
+        self.Q_k = np.diag([0.005, 0.005, 0.005, 9999, 9999])
 
         # state covariance
-        self.P_k = np.diag([0.001, 0.001, 0.001, 9.9, 9.9])
+        self.P_k = np.diag([0.0001, 0.0001, 0.0001, 0.99, 0.99])
 
 
     # def initialpose_callback(self, msg: PoseWithCovarianceStamped):
@@ -145,7 +145,7 @@ class state_estimate(Node):
         if math.fabs(angular_vel_yaw) < 0.05: 
             angular_vel_yaw = 0.0
         else:
-            angular_vel_yaw =  angular_vel_yaw #- 0.004
+            angular_vel_yaw =  angular_vel_yaw - 0.004
         #=========================
 
         self.imu_theta += angular_vel_yaw*dt
@@ -157,8 +157,8 @@ class state_estimate(Node):
         H = np.array([[0.0, 0.0, 1.0, 0.0, 0.0],
                       [0.0, 0.0, 0.0, 0.0, 1.0]])
 
-        R = np.array([[0.03, 0.00],
-                      [0.00, 0.0025]])
+        R = np.array([[99.0, 0.00],
+                      [0.00, 0.0035]])
   
         self.EKF_update(z, H, R, 0)
 
@@ -235,8 +235,8 @@ class state_estimate(Node):
         H = np.array([[0.0, 0.0, 0.0, 1.0, 0.0],
                       [0.0, 0.0, 0.0, 0.0, 1.0]])
 
-        R = np.array([[0.0001, 0.00],
-                      [0.00, 0.0002]])
+        R = np.array([[0.003, 0.00],
+                      [0.00, 0.003]])
   
         self.EKF_update(z, H, R, None)
 
@@ -360,3 +360,4 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+

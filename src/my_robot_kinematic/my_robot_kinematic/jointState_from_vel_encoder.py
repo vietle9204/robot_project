@@ -17,7 +17,7 @@ class JointStatePublisher(Node):
         super().__init__('odometry_publisher')
         # Declare Topic Name Parameters
         self.declare_parameter('joint_states_topic', '/joint_states')
-        self.declare_parameter('vel_encoder_topic', '/vel_encoder/data')
+        self.declare_parameter('vel_encoder_topic', 'robot1/vel_encoder/data')
         self.joint_states_topic = self.get_parameter('joint_states_topic').get_parameter_value().string_value
         self.vel_encoder_topic = self.get_parameter('vel_encoder_topic').get_parameter_value().string_value
 

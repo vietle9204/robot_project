@@ -4,11 +4,11 @@
   <!-- LiDAR -->
   <joint name="laser_joint" type="fixed">
     <parent link="chassis"/>
-    <child link="laser"/>
+    <child link="robot1_laser"/>
     <origin xyz="0 0 0.15" rpy="0 0 0"/>
   </joint>
 
-  <link name="laser">
+  <link name="robot1_laser">
     <visual>
       <geometry>
         <cylinder radius="0.035" length="0.04"/>
@@ -24,13 +24,13 @@
       <origin xyz="0 0 0" rpy="0 0 0"/>
     </xacro:inertial_cylinder>
   </link>  
-        
-  <gazebo reference="laser">
+        s
+  <gazebo reference="robot1_laser">
     <sensor name="laser" type="gpu_lidar">
-      <topic>scan</topic>
-      <frame>laser</frame>
-      <update_rate>10</update_rate>
-      <gz_frame_id>laser</gz_frame_id>
+      <topic>/robot1/scan</topic>
+      <frame>robot1_laser</frame>
+      <update_rate>7</update_rate>
+      <gz_frame_id>robot1_laser</gz_frame_id>
       <lidar>
         <scan>
           <horizontal>

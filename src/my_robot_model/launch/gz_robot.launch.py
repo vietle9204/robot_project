@@ -73,8 +73,8 @@ def generate_launch_description():
                     '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
                     '/imu@sensor_msgs/msg/Imu@gz.msgs.IMU',
 
-                    '/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
-                    '/scan/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked',
+                    '/robot1/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
+                    '/robot1/scan/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked',
 
                     '/camera/image_raw@sensor_msgs/msg/Image[gz.msgs.Image',
                     '/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
@@ -89,7 +89,8 @@ def generate_launch_description():
                 output='screen',
                 remappings=[#('/model/my_robot/odometry', '/odometry/data'),
                             ('/world/simple_room/model/my_robot/joint_state', '/joint_states_raw'),
-                            ('/imu', '/imu/data')
+                            ('/imu', '/robot1/imu/data'),
+                            ('/cmd_vel', '/robot1/cmd_vel')
                 ]
             ),
             Node(
