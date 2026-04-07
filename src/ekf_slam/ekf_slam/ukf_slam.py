@@ -1,0 +1,1737 @@
+# #!/usr/bin/env python3
+# from pyexpat import features
+# import rclpy
+# from rclpy.node import Node
+# import math
+# import numpy as np
+# from geometry_msgs.msg import TwistStamped, PoseWithCovarianceStamped
+# from nav_msgs.msg import Odometry
+# from sensor_msgs.msg import Imu, MagneticField, PointCloud2, LaserScan
+# from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
+# from visualization_msgs.msg import Marker, MarkerArray
+# from scipy.linalg import cholesky
+
+# qos = QoSProfile(
+#     reliability=ReliabilityPolicy.BEST_EFFORT,
+#     durability=DurabilityPolicy.VOLATILE,
+#     depth=3
+# )
+
+# def normalize_angle(a):
+#     return (a + math.pi) % (2.0 * math.pi) - math.pi
+
+# def yaw_from_quaternion(q):
+#     return math.atan2(
+#         2.0 * (q.w * q.z + q.x * q.y),
+#         1.0 - 2.0 * (q.y*q.y + q.z*q.z)
+#     )
+
+# def quaternion_from_euler(roll, pitch, yaw):
+#     """
+#     Convert Euler angles (roll, pitch, yaw) to quaternion.
+#     All angles in radians.
+#     Return: (qx, qy, qz, qw)
+#     """
+#     cy = math.cos(yaw * 0.5)
+#     sy = math.sin(yaw * 0.5)
+#     cp = math.cos(pitch * 0.5)
+#     sp = math.sin(pitch * 0.5)
+#     cr = math.cos(roll * 0.5)
+#     sr = math.sin(roll * 0.5)
+
+#     qw = cr * cp * cy + sr * sp * sy
+#     qx = sr * cp * cy - cr * sp * sy
+#     qy = cr * sp * cy + sr * cp * sy
+#     qz = cr * cp * sy - sr * sp * cy
+
+#     return qx, qy, qz, qw
+
+# class UKFSLAM(Node):
+#     def __init__(self):
+#         super().__init__("ekf_slam_node")
+#         # Declare Topic Name Parameters
+#         self.declare_param()
+#         # load parameter
+#         self.load_parameters()
+#         # Subcriptions
+#         self.create_subscription(Odometry, self.odom_topic, self.odom_cb, qos)
+#         self.create_subscription(LaserScan, self.scan_topic, self.scan_cb, qos)
+#         # Publishers
+#         self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, "/ekf_slam/pose", 10)
+#         self.map_pub = self.create_publisher(MarkerArray, "/ekf_slam/map", 10)
+        
+#         # last odom
+#         self.last_odom = None
+#         self.last_odom_time = None
+
+#         # State vector [xr, yr, theta, m1x, m1y, m2x, m2y, ...]
+#         self.x = np.zeros((3, 1))
+#         # Covariance matrix
+#         self.P = np.eye(3) * 1e-3
+#         # Noise
+#         self.Q = np.diag([0.002, 0.002, 0.002])  # motion noise
+#         self.R = np.diag([0.05, 0.05])        # measurement noise
+#         # lamarks
+#         self.num_landmarks = 0
+#         self.max_landmarks =150     # giới hạn số landmark
+#         self.landmark_score = []     # độ tin cậy
+
+#         # measurements in current step
+#         self.z = []
+#         self.z_lm_ids = []
+#         self.new_features = []
+
+#         # motion noise params
+#         self.a1 = 0.5
+#         self.a2 = 0.5
+
+#         #UKF
+#         self.alpha, self.kappa, self.beta = 0.001, 0.0, 2.0
+
+#     def declare_param(self):
+#         self.declare_parameter('scan_topic', '/scan')
+#         self.declare_parameter('odom_topic', '/odometry/data')
+
+#     def load_parameters(self):
+#         # Topic names
+#         self.scan_topic = self.get_parameter('scan_topic').value
+#         self.odom_topic = self.get_parameter('odom_topic').value
+
+#     def publish_pose(self, stamp):
+#         msg = PoseWithCovarianceStamped()
+#         msg.header.stamp = stamp
+#         msg.header.frame_id = "map"   # EKF-SLAM 
+
+#         # --- Pose ---
+#         msg.pose.pose.position.x = float(self.x[0, 0])
+#         msg.pose.pose.position.y = float(self.x[1, 0])
+#         msg.pose.pose.position.z = 0.0
+
+#         q = quaternion_from_euler(0.0, 0.0, self.x[2, 0])
+#         msg.pose.pose.orientation.x = q[0]
+#         msg.pose.pose.orientation.y = q[1]
+#         msg.pose.pose.orientation.z = q[2]
+#         msg.pose.pose.orientation.w = q[3]
+
+#         # --- Covariance (6x6) ---
+#         cov = np.zeros((6, 6))
+#         cov[0, 0] = self.P[0, 0]   # x
+#         cov[1, 1] = self.P[1, 1]   # y
+#         cov[5, 5] = self.P[2, 2]   # yaw
+
+#         msg.pose.covariance = cov.flatten().tolist()
+
+#         self.pose_pub.publish(msg)    
+
+#     def publish_map(self, stamp):
+#         if self.num_landmarks == 0:
+#             return
+
+#         marker_array = MarkerArray()
+
+#         for lm_id in range(self.num_landmarks):
+#             if lm_id >= len(self.lm_observed):
+#                 continue
+
+#             idx = 3 + 2 * lm_id
+#             mx = float(self.x[idx, 0])
+#             my = float(self.x[idx + 1, 0])
+
+#             m = Marker()
+#             m.header.frame_id = "map"
+#             m.header.stamp = stamp
+#             m.ns = "landmarks"
+#             m.id = lm_id
+#             m.type = Marker.SPHERE
+#             m.action = Marker.ADD
+
+#             m.pose.position.x = mx
+#             m.pose.position.y = my
+#             m.pose.position.z = 0.0
+#             m.pose.orientation.w = 1.0
+
+#             m.scale.x = m.scale.y = m.scale.z = 0.15
+
+#             m.color.a = 1.0
+#             if self.lm_observed[lm_id]:
+#                 m.color.g = 1.0
+#             else:
+#                 m.color.r = 1.0
+
+#             marker_array.markers.append(m)
+
+#         self.map_pub.publish(marker_array)
+
+#     def odom_cb(self, msg: Odometry):
+#         if self.last_odom is None:
+#             self.last_odom = msg
+#             return
+
+#         # Compute odometry increments
+#         yaw_now  = yaw_from_quaternion(msg.pose.pose.orientation)
+#         yaw_last = yaw_from_quaternion(self.last_odom.pose.pose.orientation)
+#         dx_odom = msg.pose.pose.position.x - self.last_odom.pose.pose.position.x
+#         dy_odom = msg.pose.pose.position.y - self.last_odom.pose.pose.position.y 
+#         dtheta = normalize_angle(yaw_now - yaw_last)
+
+#         # --- robot_motion ---
+#         dx_robot =  math.cos(yaw_now) * dx_odom + math.sin(yaw_now) * dy_odom
+#         dy_robot = -math.sin(yaw_now) * dx_odom + math.cos(yaw_now) * dy_odom
+#         self.last_odom = msg
+
+#         if abs(dx_robot) < 0.002 and abs(dy_robot) < 0.002 and abs(dtheta) < 0.002:
+#             dx_robot, dy_robot, dtheta = 0.0, 0.0, 0.0
+
+#         # EKF Prediction step
+#         self.predict((dx_robot, dy_robot, dtheta))
+
+
+#     def scan_cb(self, scan: LaserScan):
+#             # 1. Trích xuất đặc trưng
+#             features = self.extract_features_from_scan(scan)
+#             if len(features) > 0:
+#                 # 2. Data association (Hàm này sẽ lấp đầy self.z và self.new_features)
+#                 self.association(features)
+
+#                 # 3. UKF BATCH UPDATE
+#                 batch_obs = []
+#                 for i in range(len(self.z)):
+#                     r, b = self.z[i]
+#                     lm_id = self.z_lm_ids[i]
+#                     batch_obs.append((r, b, lm_id))
+
+#                 if batch_obs:
+#                     self.update(batch_obs) 
+
+#                 # 4. Thêm landmark mới (Sử dụng dữ liệu từ association)
+#                 for z in self.new_features:
+#                     if self.num_landmarks < self.max_landmarks:
+#                         self.add_landmark(z)
+#                     else:
+#                         # Nếu map đầy, thay thế landmark tệ nhất
+#                         low_score_id = np.argmin(self.landmark_score)
+#                         self.remove_landmark(low_score_id)
+#                         self.add_landmark(z)
+
+#                 # Đảm bảo góc luôn chuẩn hóa sau khi update
+#                 self.x[2, 0] = normalize_angle(self.x[2, 0])
+
+#             # 5. Publish & Log
+#             self.publish_pose(scan.header.stamp)
+#             self.publish_map(scan.header.stamp)
+#             # self.get_logger().info(...)
+
+#     # =========================
+#     #1. PREDICTION STEP
+#     # delta_x: dx, dy, dtheta ==> robot motion frame
+#     # =========================
+
+
+#     def predict(self, delta_x):
+#         dx, dy, dtheta = delta_x
+#         n = self.x.shape[0] # Số chiều trạng thái (thường là 3: x, y, theta)
+        
+#         # --- 1. Tham số cho Unscented Transform ---
+#         alpha = 0.001
+#         kappa = 0.0
+#         beta = 2.0
+#         lambd = alpha**2 * (n + kappa) - n
+        
+#         # Tính trọng số (Weights)
+#         w_m = np.zeros(2 * n + 1)
+#         w_c = np.zeros(2 * n + 1)
+#         w_m[0] = lambd / (n + lambd)
+#         w_c[0] = lambd / (n + lambd) + (1 - alpha**2 + beta)
+#         for i in range(1, 2 * n + 1):
+#             w_m[i] = w_c[i] = 1 / (2 * (n + lambd))
+
+#         # --- 2. Tạo Sigma Points ---
+#         # Thêm nhiễu Q vào P trước khi tạo sigma points hoặc cộng sau
+#         Q_model = np.zeros((n, n))
+#         # Chỉ gán nhiễu cho 3 thành phần của robot (x, y, theta)
+#         Q_model[0, 0] = self.a1 * (dx**2 + dy**2) + 1e-6
+#         Q_model[1, 1] = self.a1 * (dx**2 + dy**2) + 1e-6
+#         Q_model[2, 2] = self.a2 * (dtheta**2) + 1e-6
+        
+#         # Tính căn bậc hai của ma trận (Matrix Square Root)
+#         try:
+#             U = cholesky((n + lambd) * self.P)
+#         except np.linalg.LinAlgError:
+#             # Nếu P không xác định dương do sai số tích lũy
+#             return 
+
+#         sigma_points = np.zeros((2 * n + 1, n))
+#         sigma_points[0] = self.x.flatten()
+#         for k in range(n):
+#             sigma_points[k + 1] = self.x.flatten() + U[k]
+#             sigma_points[k + n + 1] = self.x.flatten() - U[k]
+
+#         # --- 3. Dự báo từng Sigma Point qua Motion Model ---
+#         sigmas_f = np.copy(sigma_points) # Copy để giữ nguyên tọa độ landmark
+#         for i in range(2 * n + 1):
+#             # SỬA TẠI ĐÂY: Chỉ lấy 3 giá trị đầu (0, 1, 2)
+#             px, py, pt = sigma_points[i, 0:3] 
+            
+#             # Tính toán vị trí mới của robot
+#             x_pred = px + np.cos(pt) * dx - np.sin(pt) * dy
+#             y_pred = py + np.sin(pt) * dx + np.cos(pt) * dy
+#             theta_pred = normalize_angle(pt + dtheta)
+
+#             # Cập nhật lại vào sigmas_f (chỉ cập nhật 3 chỉ số đầu)
+#             sigmas_f[i, 0:3] = [x_pred, y_pred, theta_pred]
+
+#         # --- 4. Hợp nhất (Recover Mean and Covariance) ---
+#         # Tính State mới (Weighted mean)
+#         self.x = np.sum(w_m[:, None] * sigmas_f, axis=0).reshape(-1, 1)
+#         self.x[2, 0] = normalize_angle(self.x[2, 0]) # Chuẩn hóa lại góc trung bình
+
+#         # Tính Covariance mới (Weighted covariance)
+#         P_new = np.zeros_like(self.P)
+#         for i in range(2 * n + 1):
+#             diff = (sigmas_f[i] - self.x.flatten()).reshape(-1, 1)
+#             diff[2, 0] = normalize_angle(diff[2, 0])
+#             P_new += w_c[i] * (diff @ diff.T)
+
+#         self.P = P_new + Q_model # Cộng nhiễu hệ thống
+
+
+#         # =========================
+#         # 2. UPDATE STEP
+#         # =========================
+#     def update(self, observations):
+#         """
+#         Cập nhật UKF SLAM sử dụng Batch Update cho toàn bộ trạng thái n.
+#         observations: Danh sách các tuple [(range, bearing, landmark_id), ...]
+#         """
+#         if not observations:
+#             return
+
+#         # --- 0. Khởi tạo tham số ---
+#         n = self.x.shape[0]        # Chiều dài trạng thái [3 + 2*M]
+#         m = len(observations)      # Số lượng landmark quan sát được hiện tại
+#         z_dim = 2 * m              # Mỗi landmark có 2 giá trị đo [r, b]
+        
+#         # Gom các phép đo thực tế vào một vector z_actual
+#         z_actual = np.zeros((z_dim, 1))
+#         for i, (r, b, _) in enumerate(observations):
+#             z_actual[2*i] = r
+#             z_actual[2*i+1] = b
+
+#         # --- 1. Tham số Unscented Transform (UT) ---
+#         lambd = self.alpha**2 * (n + self.kappa) - n
+        
+#         w_m = np.full(2 * n + 1, 1 / (2 * (n + lambd)))
+#         w_c = np.copy(w_m)
+#         w_m[0] = lambd / (n + lambd)
+#         w_c[0] = w_m[0] + (1 - self.alpha**2 + self.beta)
+
+#         # --- 2. Tạo Sigma Points (Cholesky trên ma trận hiệp phương sai n x n) ---
+#         try:
+#             # Sử dụng Cholesky để lấy căn bậc hai của ma trận (n + lambda) * P
+#             U = np.linalg.cholesky((n + lambd) * self.P)
+#         except np.linalg.LinAlgError:
+#             # Nếu ma trận không xác định dương (do sai số làm tròn), tạm dừng cập nhật
+#             return
+
+#         sigmas = np.zeros((2 * n + 1, n))
+#         x_flat = self.x.flatten()
+#         sigmas[0] = x_flat
+#         for k in range(n):
+#             sigmas[k + 1] = x_flat + U[:, k]
+#             sigmas[k + n + 1] = x_flat - U[:, k]
+
+#         # --- 3. Measurement Model (Dự đoán z cho các landmark quan sát được) ---
+#         z_sigmas = np.zeros((2 * n + 1, z_dim))
+#         for i in range(2 * n + 1):
+#             xr, yr, theta = sigmas[i, 0:3]
+            
+#             for j, (_, _, lm_id) in enumerate(observations):
+#                 # Landmark index trong vector trạng thái sigmas
+#                 lm_idx = 3 + 2 * lm_id
+#                 mx, my = sigmas[i, lm_idx:lm_idx+2]
+                
+#                 dx, dy = mx - xr, my - yr
+#                 dist = np.sqrt(dx**2 + dy**2)
+#                 bearing = np.arctan2(dy, dx) - theta
+                
+#                 z_sigmas[i, 2*j] = dist
+#                 z_sigmas[i, 2*j+1] = normalize_angle(bearing)
+
+#         # --- 4. Tính Mean Observation (z_hat) và Covariances (S, Pxz) ---
+#         # Tính z_hat bằng tích chập trọng số (Vectorized)
+#         z_hat = (w_m @ z_sigmas).reshape(z_dim, 1)
+#         # Chuẩn hóa tất cả các góc bearing trong z_hat
+#         for j in range(m):
+#             z_hat[2*j+1, 0] = normalize_angle(z_hat[2*j+1, 0])
+
+#         S = np.zeros((z_dim, z_dim))
+#         Pxz = np.zeros((n, z_dim))
+
+#         for i in range(2 * n + 1):
+#             # Hiệu số đo lường (dz)
+#             dz = z_sigmas[i].reshape(z_dim, 1) - z_hat
+#             for j in range(m):
+#                 dz[2*j+1, 0] = normalize_angle(dz[2*j+1, 0])
+            
+#             # Hiệu số trạng thái (dx_state)
+#             dx_state = sigmas[i].reshape(n, 1) - self.x
+#             dx_state[2, 0] = normalize_angle(dx_state[2, 0])
+            
+#             S += w_c[i] * (dz @ dz.T)
+#             Pxz += w_c[i] * (dx_state @ dz.T)
+
+#         # Cộng thêm nhiễu đo lường (R_batch)
+#         S += np.kron(np.eye(m), self.R)
+
+#         # --- 5. Cập nhật trạng thái (Dùng Cholesky thay cho nghịch đảo trực tiếp) ---
+#         try:
+#             # Phân rã Cholesky ma trận S (kích thước 2m x 2m)
+#             S = 0.5 * (S + S.T) + 1e-6 * np.eye(S.shape[0])
+#             L_s = np.linalg.cholesky(S)
+            
+#             # Giải hệ phương trình tìm Kalman Gain K: K = Pxz * S^-1
+#             # Giải bằng phương pháp solve ổn định hơn np.linalg.inv
+#             K = np.linalg.solve(L_s.T, np.linalg.solve(L_s, Pxz.T)).T
+            
+#             # Innovation (Sai số thực tế)
+#             y = z_actual - z_hat
+#             for j in range(m):
+#                 y[2*j+1, 0] = normalize_angle(y[2*j+1, 0])
+                
+#             # Cập nhật x và P
+#             self.x = self.x + K @ y
+#             self.x[2, 0] = normalize_angle(self.x[2, 0])
+            
+#             # Cập nhật hiệp phương sai (P = P - K*S*K^T)
+#             self.P = self.P - K @ S @ K.T
+            
+#         except np.linalg.LinAlgError:
+#             return
+
+#     # =========================
+#     #3. ADD NEW LANDMARK
+#     # =========================
+#     def add_landmark(self, z):
+#             r, b = z
+#             xr, yr, theta = self.x[0:3, 0]
+
+#             # Vị trí tuyệt đối của landmark dựa trên robot pose hiện tại
+#             phi = normalize_angle(theta + b)
+#             mx = xr + r * math.cos(phi)
+#             my = yr + r * math.sin(phi)
+
+#             # 1. Mở rộng vector trạng thái x
+#             self.x = np.vstack((self.x, [[mx], [my]]))
+
+#             # 2. Mở rộng ma trận hiệp phương sai P
+#             n_old = self.P.shape[0]
+#             P_new = np.zeros((n_old + 2, n_old + 2))
+#             P_new[:n_old, :n_old] = self.P
+            
+#             # Khởi tạo hiệp phương sai cho landmark mới (Ma trận đường chéo)
+#             # Bạn có thể tăng giá trị này (vd: 0.5) nếu muốn UKF tin vào cảm biến hơn ở bước đầu
+#             P_new[n_old:, n_old:] = np.diag([0.5, 0.5]) 
+
+#             self.P = P_new
+#             self.num_landmarks += 1
+#             self.landmark_score.append(2.0) # Điểm tin cậy ban đầu
+#             # Thêm trạng thái quan sát cho landmark mới
+#             if not hasattr(self, 'lm_observed'):
+#                 self.lm_observed = np.array([True], dtype=bool)
+#             else:
+#                 self.lm_observed = np.append(self.lm_observed, True)
+
+
+#     def remove_landmark(self, lm_id):
+#         idx = 3 + 2 * lm_id
+
+#         # remove state
+#         self.x = np.delete(self.x, [idx, idx+1], axis=0)
+
+#         # remove covariance
+#         self.P = np.delete(self.P, [idx, idx+1], axis=0)
+#         self.P = np.delete(self.P, [idx, idx+1], axis=1)
+
+#         # remove metadata
+#         self.landmark_score.pop(lm_id)
+#         self.num_landmarks -= 1
+#         self.lm_observed = np.delete(self.lm_observed, lm_id)
+
+
+#     # =========================
+#     # 4. FEATURE EXTRACTION FROM LASER SCAN
+#     # =========================
+#     def extract_features_from_scan(self, scan):
+#         curv_pts = self.extract_curvature_points(
+#             scan,
+#             k=5,
+#             curvature_threshold=0.185,
+#             range_min=0.5,
+#             range_max=10.0
+#         )
+
+#         if len(curv_pts) < 1:
+#             return []
+
+    
+#         clusters = self.cluster_features(curv_pts,
+#                      angle_thresh=0.02,
+#                      range_thresh=0.5)
+
+#         features = [self.cluster_to_feature(c) for c in clusters]
+#         return features
+
+#     def extract_curvature_points(self, scan,
+#                                 k=5,
+#                                 curvature_threshold=0.13,
+#                                 range_min=0.5,
+#                                 range_max=10.0):
+
+#         ranges = np.array(scan.ranges)
+#         angles = scan.angle_min + np.arange(len(ranges)) * scan.angle_increment
+
+#         valid = np.isfinite(ranges)
+#         ranges = ranges[valid]
+#         angles = angles[valid]
+
+#         if len(ranges) == 0:
+#             return []
+
+#         points = list(zip(ranges, angles))
+
+#         clusters = []
+#         cluster = [points[0]]
+
+#         for i in range(1, len(points)):
+#             db = abs(points[i][0] - points[i-1][0])
+
+#             if db < 0.5:
+#                 cluster.append(points[i])
+#             else:
+#                 clusters.append(cluster)
+#                 cluster = [points[i]]
+
+#         clusters.append(cluster)
+
+#         curv_points = []
+
+#         for cluster in clusters:
+#             if len(cluster) < 2*k + 1:
+#                 continue
+#             ranges = np.array([p[0] for p in cluster])
+#             angles = np.array([p[1] for p in cluster])
+
+#             xs = ranges * np.cos(angles)
+#             ys = ranges * np.sin(angles)
+
+#             for i in range(k, len(xs) - k):
+#                 if ranges[i] < range_min or ranges[i] > range_max:
+#                     continue
+#                 neighbors = np.stack([
+#                     xs[i-k:i+k+1],
+#                     ys[i-k:i+k+1]
+#                 ], axis=1)
+
+#                 curv = self.compute_curvature(neighbors)
+
+#                 if curv > curvature_threshold:
+#                     if i == k:
+#                         for j in range(0, i):
+#                             curv_points.append((ranges[j], angles[j]))
+
+#                     curv_points.append((ranges[i], angles[i]))
+
+#                     if i == len(xs) - k - 1:
+#                         for j in range(i+1, len(xs)):
+#                             curv_points.append((ranges[j], angles[j]))
+
+#         return curv_points
+    
+#     def compute_curvature(self, points):
+#         """
+#         points: Nx2 array (x, y)
+#         return curvature in [0, 1]
+#         """
+#         mean = np.mean(points, axis=0)
+#         cov = np.cov((points - mean).T)
+
+#         eigvals, _ = np.linalg.eig(cov)
+#         eigvals = np.sort(eigvals)
+
+#         if eigvals.sum() < 1e-6:
+#             return 0.0
+
+#         curvature = eigvals[0] / eigvals.sum()
+#         return curvature
+
+
+#     def cluster_features(self, points,
+#                      angle_thresh=0.03,
+#                      range_thresh=0.5):
+
+#         angle_clusters = self.cluster_by_angle(points, angle_thresh)
+#         final_clusters = []
+
+#         for cl in angle_clusters:
+#             min_size = self.adaptive_min_cluster_size(
+#                 np.mean([p[0] for p in cl]) if cl else 0
+#             )
+#             if len(cl) >= min_size:
+#                 # cl = self.filter_converged_points(cl, range_thresh)
+#                 final_clusters.append(cl)
+
+#         return final_clusters
+
+
+#     def cluster_by_angle(self, points, angle_thresh=0.03):
+#         clusters = []
+#         cluster = [points[0]]
+
+#         for i in range(1, len(points)):
+#             db = abs(points[i][1] - points[i-1][1])
+
+#             if db < angle_thresh:
+#                 cluster.append(points[i])
+#             else:
+#                 clusters.append(cluster)
+#                 cluster = [points[i]]
+
+#         clusters.append(cluster)
+#         return clusters
+    
+
+#     def filter_converged_points(self, cluster, range_thresh=1.0):
+#         ranges = [p[0] for p in cluster]
+#         r_min = np.mean(ranges)
+
+#         filtered = [
+#             p for p in cluster
+#             if abs(p[0] - r_min) < range_thresh
+#         ]
+#         return filtered
+
+
+#     def cluster_to_feature(self, cluster):
+#         rs = np.array([p[0] for p in cluster])
+#         bs = np.array([p[1] for p in cluster])
+
+#         r = np.mean(rs)
+#         b = math.atan2(np.mean(np.sin(bs)), np.mean(np.cos(bs)))
+
+#         return (r, b)
+
+
+#     def adaptive_min_cluster_size(self, r):
+#         if r < 1.0: return 4
+#         if r < 3.0: return 2
+#         return 1
+
+
+#     # =========================
+#     # 5. DATA ASSOCIATION
+#     # =========================
+#     def association(self, features, chi2_threshold=0.5):
+#         """
+#         features: list of np.array([r, b])
+#         """
+#         self.z = []
+#         self.z_lm_ids = []
+#         self.new_features = []
+
+#         # --- NEW: đánh dấu landmark được quan sát ---
+#         self.lm_observed = np.zeros(self.num_landmarks, dtype=bool)
+
+#         # : tính tất cả association candidate
+#         pairs = []  # (d2, feat_id, lm_id)
+
+#         for i, z in enumerate(features):
+#             for lm_id in range(self.num_landmarks):
+#                 d2 = self.compute_mahalanobis(z, lm_id)
+#                 if d2 < chi2_threshold:
+#                     pairs.append((d2, i, lm_id))
+                
+
+#         #: chọn one-to-one (GNN)
+#         pairs.sort(key=lambda x: x[0])
+
+#         used_feat = set()
+#         used_lm   = set()
+#         associations = {}
+
+#         for d2, i, lm_id in pairs:
+#             if i not in used_feat and lm_id not in used_lm:
+#                 associations[i] = lm_id
+#                 used_feat.add(i)
+#                 used_lm.add(lm_id)
+
+#         #xây self.z + đánh dấu landmark
+#         for i, z in enumerate(features):
+#             if i in associations:
+#                 lm_id = associations[i]
+#                 self.z.append(z)
+#                 self.z_lm_ids.append(lm_id)
+
+#                 # --- NEW ---
+#                 self.lm_observed[lm_id] = True
+
+#                 self.landmark_score[lm_id] += 2.0
+#             else:
+#                 self.new_features.append(z)
+
+
+#     def compute_mahalanobis(self, z, lm_id):
+#         z = np.asarray(z).reshape(2, 1)
+
+#         lm_index = 3 + 2 * lm_id
+#         mx, my = self.x[lm_index:lm_index+2, 0]
+
+#         xr, yr, theta = self.x[0, 0], self.x[1, 0], self.x[2, 0]
+
+#         dx = mx - xr
+#         dy = my - yr
+#         q = dx*dx + dy*dy
+
+#         if q < 1e-6:
+#             return float("inf")
+
+#         sqrt_q = math.sqrt(q)
+
+#         z_hat = np.array([
+#             [sqrt_q],
+#             [normalize_angle(math.atan2(dy, dx) - theta)]
+#         ])
+
+#         H = np.zeros((2, len(self.x)))
+
+#         H[0,0] = -dx / sqrt_q
+#         H[0,1] = -dy / sqrt_q
+#         H[1,0] =  dy / q
+#         H[1,1] = -dx / q
+#         H[1,2] = -1
+
+#         H[0,lm_index]   =  dx / sqrt_q
+#         H[0,lm_index+1] =  dy / sqrt_q
+#         H[1,lm_index]   = -dy / q
+#         H[1,lm_index+1] =  dx / q
+
+#         S = H @ self.P @ H.T + self.R
+
+#         y = z - z_hat
+#         y[1,0] = normalize_angle(y[1,0])
+
+#         return float(y.T @ np.linalg.inv(S) @ y)
+
+
+
+# def main(args=None):
+#     rclpy.init(args=args)
+
+#     ekf_slam_node = UKFSLAM()
+
+#     try:
+#         rclpy.spin(ekf_slam_node)
+#     except KeyboardInterrupt:
+#         pass
+#     finally:
+#         ekf_slam_node.destroy_node()
+#         rclpy.shutdown()
+
+# if __name__ == '__main__':
+#     main()  
+
+
+#!/usr/bin/env python3
+from pyexpat import features
+import rclpy
+from rclpy.node import Node
+import math
+import numpy as np
+from geometry_msgs.msg import TwistStamped, PoseWithCovarianceStamped
+from nav_msgs.msg import Odometry
+from sensor_msgs.msg import Imu, MagneticField, PointCloud2, LaserScan
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
+from visualization_msgs.msg import Marker, MarkerArray
+from scipy.linalg import cholesky
+from scipy.linalg import block_diag
+from message_filters import Subscriber, ApproximateTimeSynchronizer
+
+qos = QoSProfile(
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    durability=DurabilityPolicy.VOLATILE,
+    depth=10
+)
+qos2 = QoSProfile(
+    reliability=ReliabilityPolicy.RELIABLE,
+    durability=DurabilityPolicy.VOLATILE,
+    depth=10
+)
+
+def normalize_angle(a):
+    return (a + math.pi) % (2.0 * math.pi) - math.pi
+
+def yaw_from_quaternion(q):
+    return math.atan2(
+        2.0 * (q.w * q.z + q.x * q.y),
+        1.0 - 2.0 * (q.y*q.y + q.z*q.z)
+    )
+
+def quaternion_from_euler(roll, pitch, yaw):
+    """
+    Convert Euler angles (roll, pitch, yaw) to quaternion.
+    All angles in radians.
+    Return: (qx, qy, qz, qw)
+    """
+    cy = math.cos(yaw * 0.5)
+    sy = math.sin(yaw * 0.5)
+    cp = math.cos(pitch * 0.5)
+    sp = math.sin(pitch * 0.5)
+    cr = math.cos(roll * 0.5)
+    sr = math.sin(roll * 0.5)
+
+    qw = cr * cp * cy + sr * sp * sy
+    qx = sr * cp * cy - cr * sp * sy
+    qy = cr * sp * cy + sr * cp * sy
+    qz = cr * cp * sy - sr * sp * cy
+
+    return qx, qy, qz, qw
+
+class UKFSLAM(Node):
+    def __init__(self):
+        super().__init__("ekf_slam_node")
+    
+        # State vector [xr, yr, theta, m1x, m1y, m2x, m2y, ...]
+        self.x = np.ones((3,1)) * 1e-6
+        # Covariance matrix
+        self.P = np.eye(3) * 1e-3
+        # Noise
+        self.Q = np.eye(3) * 1e-2  # motion noise
+        self.R = np.diag([0.05, 0.055])        # measurement noise
+        # lamarks
+        self.num_landmarks = 0
+        self.max_landmarks =150     # giới hạn số landmark
+        self.landmark_score = []     # độ tin cậy
+
+        # measurements in current step
+        self.z = []
+        self.R_z = []
+        self.z_lm_ids = []
+        self.new_features = []
+
+        #UKF
+        self.alpha, self.kappa, self.beta = 0.05, 0.0, 2.0
+
+        #time parameter
+        self.last_odom = None      #[x, y, theta]
+        self.last_vel = None        #[v, w]
+        self.last_odom_cov = None        #3x3
+        self.last_vel_cov = None         #2x2
+        self.last_predict_time = None       #last predict
+
+        #Ros 2 init
+        self.ros_init()
+
+    def declare_param(self):
+        self.declare_parameter('scan_topic', '/robot1/scan')
+        self.declare_parameter('odom_topic', '/odometry/data')
+
+    def load_parameters(self):
+        # Topic names
+        self.scan_topic = self.get_parameter('scan_topic').value
+        self.odom_topic = self.get_parameter('odom_topic').value
+
+    def ros_init(self):
+        # Declare Topic Name Parameters
+        self.declare_param()
+        # load parameter
+        self.load_parameters()
+        # Subcriptions
+        # self.create_subscription(Odometry, self.odom_topic, self.odom_cb, qos)
+        # self.create_subscription(LaserScan, self.scan_topic, self.scan_cb, qos)
+        self.odom_sub = Subscriber(self, Odometry, self.odom_topic)
+        self.scan_sub = Subscriber(self, LaserScan, self.scan_topic)
+        self.ts = ApproximateTimeSynchronizer(
+            [self.odom_sub, self.scan_sub],
+            queue_size=10,
+            slop=0.03  # sai số thời gian cho phép (50ms)
+        )
+
+        self.ts.registerCallback(self.sync_cb)
+        # Publishers
+        self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, "/ekf_slam/pose", qos2)
+        self.map_pub = self.create_publisher(MarkerArray, "/ekf_slam/map", 1)
+
+    def publish_pose(self, stamp):
+        msg = PoseWithCovarianceStamped()
+        msg.header.stamp = stamp
+        msg.header.frame_id = "map"   # EKF-SLAM 
+
+        # --- Pose ---
+        msg.pose.pose.position.x = float(self.x[0, 0])
+        msg.pose.pose.position.y = float(self.x[1, 0])
+        msg.pose.pose.position.z = 0.0
+
+        q = quaternion_from_euler(0.0, 0.0, self.x[2, 0])
+        msg.pose.pose.orientation.x = q[0]
+        msg.pose.pose.orientation.y = q[1]
+        msg.pose.pose.orientation.z = q[2]
+        msg.pose.pose.orientation.w = q[3]
+
+        # --- Covariance (6x6) ---
+        cov = np.zeros((6, 6))
+        cov[0, 0] = self.P[0, 0]   # x
+        cov[1, 1] = self.P[1, 1]   # y
+        cov[5, 5] = self.P[2, 2]   # yaw
+
+        msg.pose.covariance = cov.flatten().tolist()
+
+        self.pose_pub.publish(msg)    
+
+    def publish_map(self, stamp):
+        if self.num_landmarks == 0:
+            return
+
+        marker_array = MarkerArray()
+
+        for lm_id in range(self.num_landmarks):
+            if lm_id >= len(self.lm_observed):
+                continue
+
+            idx = 3 + 2 * lm_id
+            mx = float(self.x[idx, 0])
+            my = float(self.x[idx + 1, 0])
+
+            m = Marker()
+            m.header.frame_id = "map"
+            m.header.stamp = stamp
+            m.ns = "landmarks"
+            m.id = lm_id
+            m.type = Marker.SPHERE
+            m.action = Marker.ADD
+
+            m.pose.position.x = mx 
+
+            m.pose.position.y = my
+            m.pose.position.z = 0.0
+            m.pose.orientation.w = 1.0
+
+            m.scale.x = m.scale.y = m.scale.z = 0.15
+
+            m.color.a = 1.0
+            if self.lm_observed[lm_id]:
+                m.color.g = 1.0
+            else:
+                m.color.r = 1.0
+
+            marker_array.markers.append(m)
+
+        self.map_pub.publish(marker_array)
+
+    def sync_cb(self, odom_msg, scan_msg):
+       self.odom_cb(odom_msg)
+       self.scan_cb(scan_msg)
+
+    def odom_cb(self, msg: Odometry):
+        # data pose_odom ---
+        curr_x = msg.pose.pose.position.x
+        curr_y = msg.pose.pose.position.y
+        curr_yaw = yaw_from_quaternion(msg.pose.pose.orientation)
+        # v = msg.twist.twist.linear.x
+        # w = msg.twist.twist.angular.z
+
+        # odom_covriance 3x3 [x, y, yaw]
+        c = msg.pose.covariance
+        curr_odom_cov = np.array([
+            [c[0],  c[1],  c[5]],
+            [c[6],  c[7],  c[11]],
+            [c[30], c[31], c[35]]
+        ])
+        
+        # control corvariance 2x2 [v, w]
+        # cv = msg.twist.covariance
+        # curr_vel_cov = np.array([
+        #     [cv[0],  cv[5]],
+        #     [cv[30], cv[35]]
+        # ])
+        
+        curr_time = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+
+        # kiem tra khoi tao
+        if self.last_predict_time is None:
+            self.last_odom = [curr_x, curr_y, curr_yaw]
+            self.last_odom_cov = curr_odom_cov
+            # self.last_vel = [v, w]
+            # self.last_vel_cov = curr_vel_cov
+            self.last_predict_time = curr_time
+            return
+
+        # compute timestamp
+        # dt = curr_time - self.last_predict_time
+        
+        # Delta Pose 
+        dx = curr_x - self.last_odom[0]
+        dy = curr_y - self.last_odom[1]
+        raw_dtheta = curr_yaw - self.last_odom[2]
+        dtheta = math.atan2(math.sin(raw_dtheta), math.cos(raw_dtheta))
+
+        # --- robot_motion ---
+        dx_robot =  math.cos(self.last_odom[2]) * dx + math.sin(self.last_odom[2]) * dy
+        dy_robot = -math.sin(self.last_odom[2]) * dx + math.cos(self.last_odom[2]) * dy
+
+        if abs(dx_robot) < 0.002 and abs(dy_robot) < 0.002 and abs(dtheta) < 0.002:
+            dx_robot, dy_robot, dtheta = 1e-15, 1e-15, 1e-15
+        
+        # Q_incremental: 
+        dist = math.sqrt(dx_robot**2 + dy_robot**2)
+        Q_robot = np.diag([
+            0.01 * dist + 1e-12,        # Nhiễu x
+            0.01 * dist + 1e-12,        # Nhiễu y
+            0.01 * math.fabs(dtheta**2) + 1e-12   # Nhiễu theta
+        ])
+ 
+        self.predict((dx_robot, dy_robot, dtheta), Q_robot)
+        # self.publish_pose(msg.header.stamp)
+        # 
+        self.last_odom = [curr_x, curr_y, curr_yaw]
+        self.last_odom_cov = curr_odom_cov
+        self.last_predict_time = curr_time
+        # self.last_vel = [v, w]
+        # self.last_vel_cov = curr_vel_cov
+
+
+    def scan_cb(self, scan: LaserScan):
+            # 1. Trích xuất đặc trưng
+            features = self.extract_features_from_scan(scan)
+            if len(features) > 0:
+        # --- 1. Tham số Unscented Transform (UT) ---
+                w_m, w_c, sigmas = self.generate_sigma_points(self.x, self.P)
+
+                # --- 3. Measurement Model (Dự đoán z cho các landmark quan sát được) ---
+                z_hat, S, Pxz = self.predict_all_measurements(sigmas, w_m, w_c)
+                # 2. Data association (Hàm này sẽ lấp đầy self.z và self.new_features)
+                self.association(features, z_hat, S)
+
+                # 3. UKF BATCH UPDATE
+                batch_obs = []
+                for i in range(len(self.z)):
+                    r, b = self.z[i]
+                    lm_id = self.z_lm_ids[i]
+                    batch_obs.append((r, b, lm_id))
+
+                if batch_obs:
+                    self.update(batch_obs, z_hat, S, Pxz) 
+
+                # 4. Thêm landmark mới (Sử dụng dữ liệu từ association)
+                for z in self.new_features:
+                    if self.num_landmarks < self.max_landmarks:
+                        self.add_landmark(z)
+                    else:
+                        # Nếu map đầy, thay thế landmark tệ nhất
+                        low_score_id = np.argmin(self.landmark_score)
+                        self.remove_landmark(low_score_id)
+                        self.add_landmark(z)
+
+                # Đảm bảo góc luôn chuẩn hóa sau khi update
+                self.x[2, 0] = normalize_angle(self.x[2, 0])
+
+            # 5. Publish & Log
+            self.publish_pose(scan.header.stamp)
+            self.publish_map(scan.header.stamp)
+            self.get_logger().info(f"EKF-SLAM: num_landmarks={self.num_landmarks}, pose=({self.x[0,0]:.4f}, {self.x[1,0]:.4f}, {self.x[2,0]:.4f})")
+            # self.get_logger().info(...)
+
+    
+    #=================
+    def generate_sigma_points(self, x, P):
+        n = x.shape[0] 
+        # Tham số cho Unscented Transform ---
+        lambd = self.alpha**2 * (n + self.kappa) - n
+        # Tính trọng số (Weights)
+        w_m = np.zeros(2 * n + 1)
+        w_c = np.zeros(2 * n + 1)
+        w_m[0] = lambd / (n + lambd)
+        w_c[0] = lambd / (n + lambd) + (1 - self.alpha**2 + self.beta)
+        for i in range(1, 2 * n + 1):
+            w_m[i] = w_c[i] = 1 / (2 * (n + lambd))
+
+        #-------- Tạo Sigma Points ---------
+        # Tính căn bậc hai của ma trận (Matrix Square Root)
+        try:
+            P = 0.5 * (P + P.T) 
+            idx_diag = np.diag_indices_from(P)
+            P[idx_diag] = np.maximum(P[idx_diag], 1e-9)
+            U = cholesky((n + lambd) * P)
+        except np.linalg.LinAlgError:
+            return 
+
+        sigma_points = np.zeros((2 * n + 1, n))
+        sigma_points[0] = x.flatten()
+        for k in range(n):
+            sigma_points[k + 1] = x.flatten() + U[k]
+            sigma_points[k + n + 1] = x.flatten() - U[k]
+
+        return w_m, w_c, sigma_points
+    
+    def predict_all_measurements(self, sigmas, w_m, w_c):
+        """
+        Dự báo đo lường cho TOÀN BỘ Landmark trong Map từ tập Sigma Points.
+        n: số lượng trạng thái (3 + 2*M)
+        m: số lượng Landmark hiện có
+        """
+        num_sigmas = sigmas.shape[0]
+        num_lms = self.num_landmarks
+        z_dim_full = 2 * num_lms
+        
+        # 1. Khởi tạo ma trận chứa các Sigma Points trong không gian đo lường
+        # Shape: (2*n + 1, 2*m)
+        Z_sigmas_full = np.zeros((num_sigmas, z_dim_full))
+        
+        for i in range(num_sigmas):
+            xr, yr, theta = sigmas[i, 0:3]
+            
+            for j in range(num_lms):
+                lm_idx = 3 + 2 * j
+                mx, my = sigmas[i, lm_idx : lm_idx + 2]
+                
+                dx, dy = mx - xr, my - yr
+                dist = np.sqrt(dx**2 + dy**2)
+                bearing = normalize_angle(np.arctan2(dy, dx) - theta)
+                
+                Z_sigmas_full[i, 2*j] = dist
+                Z_sigmas_full[i, 2*j+1] = bearing
+
+        # 2. Tính Kỳ vọng dự báo (Z_pred_full)
+        # Lưu ý: Với góc, ta vẫn nên dùng sin/cos mean để an toàn
+        Z_pred_full = np.zeros(z_dim_full)
+        for j in range(num_lms):
+            Z_pred_full[2*j] = np.sum(w_m * Z_sigmas_full[:, 2*j])
+            
+            s_mean = np.sum(w_m * np.sin(Z_sigmas_full[:, 2*j+1]))
+            c_mean = np.sum(w_m * np.cos(Z_sigmas_full[:, 2*j+1]))
+            Z_pred_full[2*j+1] = np.arctan2(s_mean, c_mean)
+
+        # 3. Tính Hiệp phương sai S_full và Pxz_full
+        S_full = np.zeros((z_dim_full, z_dim_full))
+        Pxz_full = np.zeros((sigmas.shape[1], z_dim_full))
+        
+        # Tiền tính toán dx (state error) cho Pxz
+        X_diff = sigmas - self.x.T
+        for i in range(num_sigmas):
+            X_diff[i, 2] = normalize_angle(X_diff[i, 2])
+
+        for i in range(num_sigmas):
+            # Tính sai số đo lường dZ
+            dZ = Z_sigmas_full[i] - Z_pred_full
+            for j in range(num_lms):
+                dZ[2*j+1] = normalize_angle(dZ[2*j+1])
+            
+            S_full += w_c[i] * np.outer(dZ, dZ)
+            Pxz_full += w_c[i] * np.outer(X_diff[i], dZ)
+
+        return Z_pred_full, S_full, Pxz_full
+    
+    # =========================
+    #1. PREDICTION STEP
+    # delta_x: dx, dy, dtheta ==> robot motion frame
+    # =========================
+    def predict(self, delta_x, Q):
+        dx, dy, dtheta = delta_x
+        n = self.x.shape[0]              # 3+2n
+        
+        # generate sigma points
+        w_m, w_c, sigma_points = self.generate_sigma_points(self.x, self.P)
+        # -----------Dự báo từng Sigma Point qua Motion Model---------
+        sigmas_f = np.copy(sigma_points) # Copy tọa độ landmark
+        pts = sigma_points[:, 2] # Lấy cột theta của tất cả sigma points
+        cos_pts = np.cos(pts)
+        sin_pts = np.sin(pts)
+
+        # Cập nhật x, y, theta 
+        sigmas_f[:, 0] = sigma_points[:, 0] + cos_pts * dx - sin_pts * dy
+        sigmas_f[:, 1] = sigma_points[:, 1] + sin_pts * dx + cos_pts * dy
+        new_thetas = pts + dtheta
+        sigmas_f[:, 2] = np.arctan2(np.sin(new_thetas), np.cos(new_thetas))
+
+        # -------- Hợp nhất (Recover Mean and Covariance) --------
+        # Tính State mới (Weighted mean)
+        # Tính Mean cho x, y và các landmarks bình thường
+        self.x = np.sum(w_m[:, None] * sigmas_f, axis=0).reshape(-1, 1)
+
+        # Tính Mean riêng cho Theta bằng hàm lượng giác để tránh sai số hướng
+        sin_sum = np.sum(w_m * np.sin(sigmas_f[:, 2]))
+        cos_sum = np.sum(w_m * np.cos(sigmas_f[:, 2]))
+        self.x[2, 0] = math.atan2(sin_sum, cos_sum)
+
+        # Tính Covariance mới (Weighted covariance)
+        P_new = np.zeros_like(self.P)
+        for i in range(2 * n + 1):
+            diff = (sigmas_f[i] - self.x.flatten()).reshape(-1, 1)
+            diff[2, 0] = normalize_angle(diff[2, 0])
+            P_new += w_c[i] * (diff @ diff.T)
+
+        # Thêm nhiễu Q vào P trước khi tạo sigma points 
+        # Lấy góc hiện tại của robot trong Map
+        theta = self.x[2, 0]
+        cos_t = math.cos(theta)
+        sin_t = math.sin(theta)
+        # Ma trận quay R (3x3 cho x, y, theta)
+        R = np.array([
+            [cos_t, -sin_t, 0],
+            [sin_t,  cos_t, 0],
+            [0,      0,     1]
+        ])
+        # Xoay Q từ Robot Frame sang Global Frame
+        Q_global = R @ Q @ R.T
+
+        # Sau đó mới gán vào Q_model lớn
+        Q_model = np.zeros((n, n))
+        Q_model[:3, :3] = Q_global
+        
+        self.P = P_new + Q_model # Cộng nhiễu hệ thống
+
+
+        # =========================
+        # 2. UPDATE STEP
+        # =========================
+    def update(self, observations, Z_pred_full, S_full, Pxz_full):
+        """
+        observations: Danh sách các tuple [(r, b, lm_id), ...] từ kết quả association
+        Z_pred_full: Vector (2*M,) dự báo cho tất cả landmark
+        S_full: Ma trận (2*M, 2*M) hiệp phương sai dự báo toàn phần
+        Pxz_full: Ma trận (n, 2*M) hiệp phương sai chéo
+        """
+        if not observations:
+            return
+
+        m = len(observations)      # Số lượng landmark khớp được
+        n = self.x.shape[0]        # 3 + 2*M
+        z_dim = 2 * m
+        
+        # --- 1. Xây dựng Index quan sát (Indices Mapping) ---
+        # Chúng ta cần nhặt ra các hàng/cột tương ứng với lm_id từ ma trận Full
+        matched_indices = []
+        z_actual = np.zeros((z_dim, 1))
+        z_hat = np.zeros((z_dim, 1))
+        
+        for i, (r, b, lm_id) in enumerate(observations):
+            # Tọa độ đo đạc thực tế
+            z_actual[2*i] = r
+            z_actual[2*i+1] = b
+            
+            # Trích xuất dự báo tương ứng từ Z_pred_full
+            z_hat[2*i] = Z_pred_full[2*lm_id]
+            z_hat[2*i+1] = Z_pred_full[2*lm_id+1]
+            
+            # Lưu lại vị trí các cột trong ma trận S_full và Pxz_full
+            matched_indices.extend([2*lm_id, 2*lm_id+1])
+
+        # --- 2. Trích xuất các ma trận con (Slicing) ---
+        # S_match kích thước (2m x 2m)
+        S = S_full[np.ix_(matched_indices, matched_indices)]
+        # Pxz kích thước (n x 2m)
+        Pxz = Pxz_full[:, matched_indices]
+
+        # --- 3. Cộng nhiễu đo lường R ---
+        # Vì R được cộng vào từng landmark đơn lẻ, ta dùng ma trận khối đường chéo
+        S = S + block_diag(*self.R_z)
+
+        # --- 4. Tính toán Kalman Gain và Cập nhật ---
+        try:
+            # Đảm bảo tính đối xứng để Cholesky không lỗi
+            S = 0.5 * (S + S.T) + 1e-9 * np.eye(z_dim)
+            L_s = np.linalg.cholesky(S)
+            
+            # K = Pxz * S^-1 (Giải hệ phương trình L*L.T * K.T = Pxz.T)
+            K = np.linalg.solve(L_s.T, np.linalg.solve(L_s, Pxz.T)).T
+            
+            # Innovation y
+            y = z_actual - z_hat
+            for j in range(m):
+                y[2*j+1, 0] = normalize_angle(y[2*j+1, 0])
+                
+            # Cập nhật State x
+            self.x = self.x + K @ y
+            self.x[2, 0] = normalize_angle(self.x[2, 0])
+            
+            # Cập nhật Covariance 
+            self.P = self.P - K @ S @ K.T
+            
+        except np.linalg.LinAlgError:
+            print("UKF Update: Cholesky failed, skipping update.")
+            return
+
+    # =========================
+    #3. ADD NEW LANDMARK
+    # =========================
+    def add_landmark(self, z_feat):
+        """
+        z_feat: Tuple (z_mean, R_obs) từ cluster_to_feature
+        z_mean: [r, b]
+        R_obs: Ma trận hiệp phương sai 2x2 của cụm điểm đo được
+        """
+        z_mean, R_obs = z_feat
+        r, b = z_mean
+        
+        # 1. Trích xuất trạng thái robot hiện tại
+        xr, yr, theta = self.x[0:3, 0]
+
+        # 2. Tính vị trí tuyệt đối của Landmark (Toạ độ Cartesian)
+        phi = normalize_angle(theta + b)
+        mx = xr + r * np.cos(phi)
+        my = yr + r * np.sin(phi)
+
+        # 3. Mở rộng Vector trạng thái x
+        self.x = np.vstack((self.x, [[mx], [my]]))
+
+       # --- 4. MỞ RỘNG MA TRẬN P VỚI TƯƠNG QUAN ---
+        n_old = self.P.shape[0]
+        
+        # Jacobian của hàm chuyển đổi (Polar -> Cartesian) theo Robot [xr, yr, theta]
+        Gr = np.array([
+            [1, 0, -r * np.sin(phi)],
+            [0, 1,  r * np.cos(phi)]
+        ])
+        
+        # Jacobian của hàm chuyển đổi theo phép đo [r, b]
+        Gz = np.array([
+            [np.cos(phi), -r * np.sin(phi)],
+            [np.sin(phi),  r * np.cos(phi)]
+        ])
+
+        # A. Tính tương quan giữa Map hiện tại và Landmark mới
+        # P_new_column = P_old * Gr.T
+        # Kích thước: (n_old x 3) * (3 x 2) = (n_old x 2)
+        P_robot_map = self.P[:, :3] 
+        P_cross = P_robot_map @ Gr.T
+
+        # B. Tính hiệp phương sai tự thân của Landmark mới (Uncertainty)
+        # P_ll = Gr * P_robot * Gr.T + Gz * R_obs * Gz.T
+        P_robot_only = self.P[0:3, 0:3]
+        P_ll = Gr @ P_robot_only @ Gr.T + Gz @ R_obs @ Gz.T
+
+        # C. Ghép vào ma trận P mới
+        P_new = np.zeros((n_old + 2, n_old + 2))
+        P_new[:n_old, :n_old] = self.P           # Map cũ
+        P_new[:n_old, n_old:] = P_cross         # Tương quan (Cột phải)
+        P_new[n_old:, :n_old] = P_cross.T       # Tương quan (Hàng dưới)
+        P_new[n_old:, n_old:] = P_ll            # Landmark mới
+
+        self.P = P_new
+
+        # 5. Cập nhật các biến quản lý
+        self.num_landmarks += 1
+        self.landmark_score.append(2.0)
+        
+        if hasattr(self, 'lm_observed'):
+            self.lm_observed = np.append(self.lm_observed, True)
+
+
+    def remove_landmark(self, lm_id):
+        """
+        Xóa landmark khỏi state, covariance và metadata.
+        """
+        if lm_id >= self.num_landmarks:
+            return
+
+        idx = 3 + 2 * lm_id
+
+        # 1. Xóa khỏi vector trạng thái x (axis=0 vì x là vector cột n x 1)
+        self.x = np.delete(self.x, [idx, idx + 1], axis=0)
+
+        # 2. Xóa khỏi ma trận hiệp phương sai P (cả hàng và cột)
+        self.P = np.delete(self.P, [idx, idx + 1], axis=0)
+        self.P = np.delete(self.P, [idx, idx + 1], axis=1)
+
+        # 3. Cập nhật metadata
+        self.landmark_score.pop(lm_id)
+        self.num_landmarks -= 1
+        
+        # Xóa trạng thái quan sát (nếu có dùng mảng numpy)
+        if hasattr(self, 'lm_observed'):
+            self.lm_observed = np.delete(self.lm_observed, lm_id)
+
+
+    # =========================
+    # 4. FEATURE EXTRACTION FROM LASER SCAN
+    # =========================
+    def extract_features_from_scan(self, scan):
+        ranges = np.array(scan.ranges)
+        indices = np.arange(len(ranges))
+
+        valid = np.isfinite(ranges)
+        ranges = ranges[valid]
+        angles = (scan.angle_min + indices * scan.angle_increment)[valid]
+        valid_indices = indices[valid]
+        
+        xs = ranges * np.cos(angles)
+        ys = ranges * np.sin(angles)
+
+        point_cloud = np.column_stack((xs, ys, ranges, angles, valid_indices))
+
+        segment_clusters = self.segment_scan(point_cloud, 0.5, 3)
+
+        # 2. Chạy trích xuất đặc trưng cho TỪNG cụm
+        curv_pts = []
+        for point_cluster in segment_clusters:
+            # point_cluster là mảng (N, 5) chứa [x, y, r, b, id]
+            
+            features = self.extract_curvature_points(
+                point_cluster,
+                k=5, 
+                curvature_threshold=0.185,
+                range_min=0.5,
+                range_max=10.0
+            )
+            
+            if len(features) > 0:
+                curv_pts.extend(features)
+
+        if len(curv_pts) < 1:
+            return []
+        
+        clusters = self.cluster_features(curv_pts,
+                     angle_thresh=0.02)
+
+        measurements = [self.cluster_to_feature(c) for c in clusters]
+        return measurements
+
+
+    def segment_scan(self, point_cloud, threshold=0.2, min_points=3):
+        """
+        points_cloud: np.array shape (N, 5) chứa [x, y, r, b, id]
+        """
+        if len(point_cloud) < 2: return []
+
+        # Tính khoảng cách Euclidean từ cột x (0) và y (1)
+        diffs = np.diff(point_cloud[:, :2], axis=0)
+        dist_sq_array = np.sum(diffs**2, axis=1)
+        
+        thresh_sq = threshold**2
+        clusters = []
+        current_cluster = [point_cloud[0]]
+
+        for i in range(len(dist_sq_array)):
+            # Kiểm tra thêm: Nếu index nhảy bậc quá xa, ta chủ động tách cụm
+            idx_diff = point_cloud[i+1, 4] - point_cloud[i, 4]
+            
+            if dist_sq_array[i] < thresh_sq and idx_diff < 5: # 5 là ngưỡng nhảy index tùy chọn
+                current_cluster.append(point_cloud[i+1])
+            else:
+                if len(current_cluster) >= min_points:
+                    clusters.append(np.array(current_cluster))
+                current_cluster = [point_cloud[i+1]]
+        
+        # Cụm cuối
+        if len(current_cluster) >= min_points:
+            clusters.append(np.array(current_cluster))
+
+        # 3. Xử lý khép vòng 360 độ
+        if len(clusters) > 1:
+            first_pt = clusters[0][0]   
+            last_pt = clusters[-1][-1]   
+            dist_wrap_sq = np.sum((first_pt[:2] - last_pt[:2])**2)
+            if dist_wrap_sq < thresh_sq:
+                clusters[0] = np.vstack((clusters[-1], clusters[0]))
+                clusters.pop()
+
+        return clusters
+    
+
+    def extract_curvature_points(self, point_cluster, 
+                                k=5, 
+                                curvature_threshold=0.13, 
+                                range_min=0.5, 
+                                range_max=10.0):
+        """
+        point_cluster: np.array shape (N, 5) -> [x, y, r, b, id]
+        """
+        n = len(point_cluster)
+        if n < 2 * k + 1:
+            return []
+
+        # 1. Tính toán độ cong cho vùng trung tâm (từ k đến n-k-1)
+        curv_indices = []
+        for i in range(k, n - k):
+            if point_cluster[i, 2] < range_min or point_cluster[i, 2] > range_max:
+                continue
+                
+            neighbors = point_cluster[i-k : i+k+1, 0:2]
+            curv = self.compute_curvature(neighbors)
+            if curv > curvature_threshold:
+                curv_indices.append(i)
+
+        if not curv_indices:
+            return []
+
+        # 2. Xây dựng danh sách kết quả (Sử dụng slicing để tránh duplicate)
+        first_curv = curv_indices[0]
+        last_curv = curv_indices[-1]
+        
+        final_results = []
+        # Phần bù đầu
+        if first_curv == k:
+            final_results.extend(point_cluster[0:k])
+            
+        # Phần thân (các điểm thực sự vượt ngưỡng)
+        final_results.extend(point_cluster[curv_indices])
+            
+        # Phần bù cuối
+        if last_curv == n - k - 1:
+            final_results.extend(point_cluster[n-k : n])
+
+        return final_results
+    
+    
+    def compute_curvature(self, points):
+        # points: Nx2 array (x, y)
+        if len(points) < 3:
+            return 0.0
+
+        # Tính hiệp phương sai thủ công cho ma trận 2x2 (Nhanh hơn gọi np.cov)
+        centered = points - np.mean(points, axis=0)
+        # cov = [[var_x, cov_xy], [cov_xy, var_y]]
+        cov = (centered.T @ centered) / (len(points) - 1)
+
+        # Tính trị riêng cho ma trận 2x2 bằng công thức nghiệm phương trình bậc 2
+        # trace = lambda1 + lambda2, det = lambda1 * lambda2
+        trace = cov[0, 0] + cov[1, 1]
+        det = cov[0, 0] * cov[1, 1] - cov[0, 1]**2
+        
+        # Tính lambda_min (trị riêng nhỏ hơn)
+        # lambda = (trace - sqrt(trace^2 - 4*det)) / 2
+        discriminant = max(0, trace**2 - 4 * det)
+        lambda_min = (trace - np.sqrt(discriminant)) / 2.0
+
+        if trace < 1e-6:
+            return 0.0
+
+        return lambda_min / trace
+
+
+    def cluster_features(self, points, angle_thresh=0.03):
+        if not points or len(points) == 0:
+            return []
+
+        # 1. Phân cụm thô theo góc
+        angle_clusters = self.cluster_by_angle(points, angle_thresh)
+        final_clusters = []
+
+        # 2. Lọc và làm sạch từng cụm
+        for cl in angle_clusters:
+            cl_array = np.array(cl)
+            # Tính khoảng cách trung bình của cụm (cột r là index 2)
+            mean_r = np.mean(cl_array[:, 2])
+            
+            min_size = self.adaptive_min_cluster_size(mean_r)
+            if len(cl) >= min_size:
+                # cl = self.filter_converged_points(cl_array, range_thresh=0.5)
+                final_clusters.append(cl_array)
+
+        return final_clusters
+    
+
+    def cluster_by_angle(self, points, angle_thresh=0.03):
+        """Phân cụm dựa trên chênh lệch góc beta (index 3)"""
+        if not points: return []
+        
+        # Đảm bảo điểm được sắp xếp theo góc để duyệt tuyến tính
+        # points = sorted(points, key=lambda p: p[3])
+        
+        clusters = []
+        current_cluster = [points[0]]
+
+        for i in range(1, len(points)):
+            # Tính delta beta (index 3)
+            db = abs(points[i][3] - points[i-1][3])
+            
+            # if db > np.pi:
+            #     db = abs(db - 2 * np.pi)
+
+            if db < angle_thresh:
+                current_cluster.append(points[i])
+            else:
+                clusters.append(current_cluster)
+                current_cluster = [points[i]]
+
+        clusters.append(current_cluster)
+
+        return clusters
+    
+
+    def filter_converged_points(self, cluster, range_thresh=0.5):
+        if len(cluster) == 0: return cluster
+        
+        rs = cluster[:, 2]
+        r_mean = np.mean(rs)
+
+        mask = np.abs(rs - r_mean) < range_thresh
+        return cluster[mask]
+
+
+    def cluster_to_feature(self, cluster):
+        """
+        cluster: np.array shape (N, 5) -> [x, y, r, b, id]
+        Kết hợp Hiệp phương sai tự thân của cụm và Nhiễu mặc định self.R
+        """
+        cluster = np.array(cluster)
+        
+        # 1. (Mean)
+        mean_r = np.mean(cluster[:, 2])
+        
+        mean_b = np.arctan2(np.mean(np.sin(cluster[:, 3])), 
+                            np.mean(np.cos(cluster[:, 3])))
+        
+        z_mean = np.array([mean_r, mean_b])
+
+        # 2.(Covariance)
+        if len(cluster) > 1:
+            z_cov_empirical = np.cov(cluster[:, 2:4].T)
+        else:
+            # Nếu chỉ có 1 điểm
+            z_cov_empirical = np.zeros((2, 2))
+
+        # 3.(Noise Floor)
+        z_cov = z_cov_empirical + self.R
+
+        return z_mean, z_cov
+
+    def adaptive_min_cluster_size(self, r):
+        if r < 1.0: return 4
+        if r < 3.0: return 2
+        return 1
+
+
+    # =========================
+    # 5. DATA ASSOCIATION
+    # =========================
+    def association(self, features, Z_pred_full, S_full, chi2_threshold=0.5):
+        """
+        features: list of (z_obs, R_obs) từ extract_features_from_scan
+        Z_pred_full: Vector (2*M,) dự báo [r1, b1, r2, b2...]
+        S_full: Ma trận (2*M, 2*M) hiệp phương sai dự báo
+        """
+        self.z = []
+        self.R_z = []
+        self.z_lm_ids = []
+        self.new_features = []
+        self.lm_observed = np.zeros(self.num_landmarks, dtype=bool)
+
+        # 1. Trích xuất các khối đường chéo S cho từng Landmark
+        # S_diag_blocks[lm_id] = ma trận 2x2
+        S_diag_blocks = [
+            S_full[2*j : 2*j+2, 2*j : 2*j+2] for j in range(self.num_landmarks)
+        ]
+
+        # 2. Tính toán tất cả ứng viên tiềm năng (Mahalanobis)
+        pairs = []  # (d2, feat_id, lm_id)
+
+        for i, (z_obs, R_obs) in enumerate(features):
+            for lm_id in range(self.num_landmarks):
+                # Lấy dự báo r, b của landmark này
+                z_pred = Z_pred_full[2*lm_id : 2*lm_id+2]
+                
+                # Tính Innovation (sai số quan sát)
+                v = z_obs - z_pred
+                v[1] = normalize_angle(v[1]) # Quan trọng: chuẩn hóa góc
+                if(abs(v[0]) > 3.0 or abs(v[1]) > np.pi/6):
+                    continue
+
+                # S_total = S_robot_map + R_sensor
+                S_total = S_diag_blocks[lm_id] + R_obs
+                
+                try:
+                    # d2 = v^T * S_total^-1 * v
+                    inv_S = np.linalg.inv(S_total)
+                    d2 = v.T @ inv_S @ v
+                    
+                    if d2 < chi2_threshold:
+                        pairs.append((d2, i, lm_id))
+                except np.linalg.LinAlgError:
+                    continue
+
+        # 3. Chọn cặp khớp One-to-One (GNN)
+        pairs.sort(key=lambda x: x[0])
+
+        used_feat = set()
+        used_lm   = set()
+        associations = {}
+
+        for d2, i, lm_id in pairs:
+            if i not in used_feat and lm_id not in used_lm:
+                associations[i] = lm_id
+                used_feat.add(i)
+                used_lm.add(lm_id)
+
+        # 4. Phân loại Feature thành Landmark cũ hoặc Feature mới
+        for i, (z_obs, R_obs) in enumerate(features):
+            if i in associations:
+                lm_id = associations[i]
+                self.z.append(z_obs)
+                self.R_z.append(R_obs)
+                self.z_lm_ids.append(lm_id)
+                
+                self.lm_observed[lm_id] = True
+                self.landmark_score[lm_id] += 2.0
+            else:
+                # Trả về cả z và R để khởi tạo landmark mới chính xác hơn
+                self.new_features.append((z_obs, R_obs))
+
+
+    def compute_mahalanobis(self, z, lm_id):
+        z = np.asarray(z).reshape(2, 1)
+
+        lm_index = 3 + 2 * lm_id
+        mx, my = self.x[lm_index:lm_index+2, 0]
+
+        xr, yr, theta = self.x[0, 0], self.x[1, 0], self.x[2, 0]
+
+        dx = mx - xr
+        dy = my - yr
+        q = dx*dx + dy*dy
+
+        if q < 1e-6:
+            return float("inf")
+
+        sqrt_q = math.sqrt(q)
+
+        z_hat = np.array([
+            [sqrt_q],
+            [normalize_angle(math.atan2(dy, dx) - theta)]
+        ])
+
+        H = np.zeros((2, len(self.x)))
+
+        H[0,0] = -dx / sqrt_q
+        H[0,1] = -dy / sqrt_q
+        H[1,0] =  dy / q
+        H[1,1] = -dx / q
+        H[1,2] = -1
+
+        H[0,lm_index]   =  dx / sqrt_q
+        H[0,lm_index+1] =  dy / sqrt_q
+        H[1,lm_index]   = -dy / q
+        H[1,lm_index+1] =  dx / q
+
+        S = H @ self.P @ H.T + self.R
+
+        y = z - z_hat
+        y[1,0] = normalize_angle(y[1,0])
+
+        return float(y.T @ np.linalg.inv(S) @ y)
+
+
+
+def main(args=None):
+    rclpy.init(args=args)
+
+    ekf_slam_node = UKFSLAM()
+
+    try:
+        rclpy.spin(ekf_slam_node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        ekf_slam_node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()  
