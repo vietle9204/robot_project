@@ -320,8 +320,19 @@ class OccupancyMapping(Node):
         self.last_pose_used = None
 
         # ===== Sync subscribers =====
-        self.scan_sub = Subscriber(self, PointCloud2, '/scan/cloudpoints', qos)
-        self.pose_sub = Subscriber(self, PoseWithCovarianceStamped, '/ekf_slam/pose', qos2)
+        self.scan_sub = Subscriber(
+            self,
+            PointCloud2,
+            '/scan/cloudpoints',
+            qos_profile=qos
+        )
+
+        self.pose_sub = Subscriber(
+            self,
+            PoseWithCovarianceStamped,
+            '/ekf_slam/pose',
+            qos_profile=qos2
+        )
 
         self.ts = ApproximateTimeSynchronizer(
             [self.scan_sub, self.pose_sub],
