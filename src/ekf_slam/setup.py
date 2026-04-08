@@ -30,6 +30,7 @@ setup(
             'map_to_tf = ekf_slam.map_to_tf:main',
             'map_draw = ekf_slam.map_draw:main',
             'ukf_slam = ekf_slam.ukf_slam:main',
+            'ukf_slam_2 = ekf_slam.ukf_slam_2:main'
         ],
     },
 )

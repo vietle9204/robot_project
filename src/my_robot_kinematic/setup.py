@@ -39,7 +39,7 @@ setup(
             'state_estimate = my_robot_kinematic.state_estimate:main',
             'read_logger = my_robot_kinematic.read:main',
             'scanToCloud = my_robot_kinematic.scanToCloud:main',
-            'state_estimate_UKF = my_robot_kinematic.state_estimate_UKF2:main',
+            'state_estimate_UKF = my_robot_kinematic.state_estimate_UKF:main',
             'state_estimate_UKF2 = my_robot_kinematic.state_estimate_UKF2:main',
             'plot = my_robot_kinematic.plot:main',
         ],

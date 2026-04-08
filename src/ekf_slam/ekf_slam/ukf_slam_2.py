@@ -21,7 +21,7 @@ qos = QoSProfile(
 qos2 = QoSProfile(
     reliability=ReliabilityPolicy.RELIABLE,
     durability=DurabilityPolicy.VOLATILE,
-    depth=100
+    depth=10
 )
 
 def normalize_angle(a):
@@ -110,7 +110,7 @@ class UKFSLAM(Node):
         self.ts = ApproximateTimeSynchronizer(
             [self.odom_sub, self.scan_sub],
             queue_size=20,
-            slop=0.05  # sai số thời gian cho phép (50ms)
+            slop=0.03  # sai số thời gian cho phép (50ms)
         )
 
         self.ts.registerCallback(self.sync_cb)
@@ -295,10 +295,8 @@ class UKFSLAM(Node):
                     lm_id = self.z_lm_ids[i]
                     batch_obs.append((r, b, lm_id))
 
-
                 if batch_obs:
                     self.update(z_hat, P_zz, H, batch_obs, self.R_z)
-                    
 
                 # 4. Thêm landmark mới (Sử dụng dữ liệu từ association)
                 for z in self.new_features:

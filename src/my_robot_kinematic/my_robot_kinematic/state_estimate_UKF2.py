@@ -19,7 +19,7 @@ qos = QoSProfile(
 qos2 = QoSProfile(
     reliability=ReliabilityPolicy.RELIABLE,
     durability=DurabilityPolicy.VOLATILE,
-    depth=100
+    depth=10
 )
 
 def angle_normalize(a):
@@ -73,7 +73,7 @@ class state_estimate(Node):
         self.last_time = self.get_clock().now().nanoseconds
         self.odom_time = None
 
-        self.UKF_init = False
+        self.sigma_pred_c = None
 
     def init_pub_sub(self):
         # encoder
@@ -169,7 +169,7 @@ class state_estimate(Node):
         if t_min is None:
             now = self.get_clock().now().nanoseconds * 1e-9
             dt = now - self.last_time
-            t_min = self.odom_time + 0.99*dt
+            t_min = self.odom_time + 0.999*dt
             # return
 
         match min_sensor_name:
@@ -328,15 +328,14 @@ class state_estimate(Node):
             mag_R[0] = mag_R[0] + 0.0001
         R = np.diag([imu_R[0], imu_R[1], enc_R[0], enc_R[1], enc_R[2], self.enc_R[3], self.enc_R[4], mag_R[0]])
                 
-        self.UKF_update(z, H, R, Q, (0,4,7))
+        self.UKF_update(z, H, R, (0,4,7))
     
         ros_stamp = Time(seconds=self.odom_time).to_msg()
         self.publish_odom(ros_stamp)
-        # self.publish_odom(self.odom_time)
         self.get_logger().info("Odom published: x,y,theta = {:.4f}, {:.4f}, {:.4f}".format(
             self.x_k[0,0], self.x_k[1,0], self.x_k[2,0]
         ))
-        self.get_logger().info("enc_buffer length: {}, imu_buffer length: {}".format(len(self.enc_buffer), len(self.imu_buffer)))
+        self.get_logger().info("enc_buffer length: {}, imu_buffer length: {}, mag_buffer length: {}".format(len(self.enc_buffer)+enc_flag, len(self.imu_buffer)+imu_flag, len(self.mag_buffer)+mag_flag))
 
         # if(self.enc_buffer or self.imu_buffer):
         #     self.ST_process()
@@ -405,18 +404,15 @@ class state_estimate(Node):
         
         self.x_k = x_new
         self.P_k = 0.5 * (P_new + P_new.T) + np.eye(self.n_x) * 1e-9
-        # self.sigma_c = sigma_pred 
-        self.UKF_init = True
+        self.sigma_pred_c = sigma_pred[:self.n_x, :]
 
 
-    def UKF_update(self, z, H, R, Q, yaw_index):
-        # if not hasattr(self, 'sigma_c'): return # Đợi prediction đầu tiên
-        if self.UKF_init is False: return
-        
+    def UKF_update(self, z, H, R, yaw_index):
+
         n_z = z.shape[0]
-        full_sigma = self.generate_sigma_points(self.x_k, self.P_k, Q)
-        self.sigma_c = full_sigma[:self.n_x, :] # Chỉ lấy 5 hàng trạng thái
-        Z_sigma = H @ self.sigma_c
+        # full_sigma = self.generate_sigma_points(self.x_k, self.P_k, Q)
+        # self.sigma_c = full_sigma[:self.n_x, :] # Chỉ lấy 5 hàng trạng thái
+        Z_sigma = H @ self.sigma_pred_c
         
         # Predicted measurement mean
         z_pred = np.zeros((n_z, 1))
@@ -452,7 +448,7 @@ class state_estimate(Node):
                 else:
                     dz[yaw_index, 0] = angle_normalize(dz[yaw_index, 0])
             
-            dx = self.sigma_c[:, i:i+1] - self.x_k
+            dx = self.sigma_pred_c[:, i:i+1] - self.x_k
             dx[2, 0] = angle_normalize(dx[2, 0])
             
             Pzz += self.Wc[i] * (dz @ dz.T)
