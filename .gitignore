@@ -3,3 +3,4 @@ log/
 install/
 *.bag
 rosbag2_*
+*.csv
