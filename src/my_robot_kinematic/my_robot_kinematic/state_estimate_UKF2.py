@@ -25,6 +25,9 @@ qos2 = QoSProfile(
 def angle_normalize(a):
     return (a + math.pi) % (2 * math.pi) - math.pi
 
+def normalize_angle_vec(a):
+    return (a + np.pi) % (2*np.pi) - np.pi
+
 class state_estimate(Node):
     def __init__(self):
         super().__init__('odom_node')
@@ -55,6 +58,7 @@ class state_estimate(Node):
         self.beta = 2
         self.kappa = 0
         self.lam = self.alpha**2 * (self.L + self.kappa) - self.L
+        self.scale = np.sqrt(self.L + self.lam)
         # sigma point weight
         self.Wm = np.full(2 * self.L + 1, 1 / (2 * (self.L + self.lam)))
         self.Wc = self.Wm.copy()
@@ -63,8 +67,19 @@ class state_estimate(Node):
 
         # define state vector
         self.x_k = np.zeros((5, 1))   # [x, y, theta, v, w]
-        self.Q_k = np.diag([0.001, 0.001])
+        self.Q_k = np.diag([0.0005, 0.0005])
         self.P_k = np.eye(5) * 0.1
+        #define measurement vector
+        self.z = np.zeros((8,1))
+        self.measure_yaw_idx = (0,4,7)
+        self.H = np.array([[0.0, 0.0, 1.0, 0.0, 0.0],
+                           [0.0, 0.0, 0.0, 0.0, 1.0],
+                           [1.0, 0.0, 0.0, 0.0, 0.0],
+                           [0.0, 1.0, 0.0, 0.0, 0.0],
+                           [0.0, 0.0, 1.0, 0.0, 0.0],
+                           [0.0, 0.0, 0.0, 1.0, 0.0], 
+                           [0.0, 0.0, 0.0, 0.0, 1.0],
+                           [0.0, 0.0, 1.0, 0.0, 0.0],])
 
         # Filter 
         self.timer_period = 0.02  # 100Hz
@@ -81,7 +96,7 @@ class state_estimate(Node):
         self.last_enc_msg = None
         self.enc_odom = np.zeros((3,1)) # dead reckoning from encoder
         self.enc_buffer = deque(maxlen=20)
-        self.enc_R = np.array([0.006, 0.006, 0.006, 0.001, 0.001])
+        self.enc_R = np.array([0.004, 0.004, 0.005, 0.001, 0.001])
         # imu
         self.create_subscription(Imu, self.imu_topic, self.imu_callback, qos)
         self.last_imu_msg =  None
@@ -283,7 +298,7 @@ class state_estimate(Node):
         # Predic
         Q = self.Q_k.copy()
         Q[0,0] = Q[0,0] + 4.0*max(0.0, -2*1e-4 + (math.fabs(enc_v - self.x_k[3,0])**2)) + 10*max(0.0, -1*1e-4+ (math.fabs(enc_v  - self.last_enc_msg.twist.linear.x)**2))
-        Q[1,1] = Q[1,1] + 4.0*max(0.0, -10*1e-4 + (math.fabs(0.5*(enc_w + angular_vel_yaw) - self.x_k[4,0])**2)) + 10*max(0.0, -3*1e-3 + (math.fabs(0.5*(enc_w - self.last_enc_msg.twist.angular.z) + 0.5*(angular_vel_yaw - self.last_imu_msg.angular_velocity.z))**2))
+        Q[1,1] = Q[1,1] + 4.0*max(0.0, -10*1e-4 + (math.fabs(0.5*(enc_w + angular_vel_yaw) - self.x_k[4,0])**2)) + 10*max(0.0, -4*1e-3 + (math.fabs(0.5*(enc_w - self.last_enc_msg.twist.angular.z) + 0.5*(angular_vel_yaw - self.last_imu_msg.angular_velocity.z))**2))
 
         predict_dt = t_min - self.odom_time
         self.UKF_prediction(predict_dt, Q)
@@ -293,32 +308,22 @@ class state_estimate(Node):
         self.last_time = now
         
         # update
-        z = np.array([[imu_theta],
-                      [angular_vel_yaw],
-                      [enc_odom[0,0]],
-                      [enc_odom[1,0]],
-                      [enc_odom[2,0]],
-                      [enc_v],
-                      [enc_w],
-                      [mag_yaw]])
-            
-        H = np.array([[0.0, 0.0, 1.0, 0.0, 0.0],
-                      [0.0, 0.0, 0.0, 0.0, 1.0],
-                      [1.0, 0.0, 0.0, 0.0, 0.0],
-                      [0.0, 1.0, 0.0, 0.0, 0.0],
-                      [0.0, 0.0, 1.0, 0.0, 0.0],
-                      [0.0, 0.0, 0.0, 1.0, 0.0], 
-                      [0.0, 0.0, 0.0, 0.0, 1.0],
-                      [0.0, 0.0, 1.0, 0.0, 0.0],])
+
+        self.z[0,0] = imu_theta
+        self.z[1,0] = angular_vel_yaw
+        self.z[2:5,0] = enc_odom[:3,0]
+        self.z[5,0] = enc_v
+        self.z[6,0] = enc_w
+        self.z[7,0] = mag_yaw 
 
         imu_R = self.imu_R.copy()
-        imu_R[0] = imu_R[0] + (0.001*math.fabs(self.imu_theta))**2
+        imu_R[0] = imu_R[0] + (0.02*math.fabs(self.imu_theta))**2
         if imu_flag:
             imu_R[0] = imu_R[0] + 0.0001
         enc_R = self.enc_R.copy()
-        enc_R[0] = enc_R[0] + (0.00001*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
-        enc_R[1] = enc_R[1] + (0.00001*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
-        enc_R[2] = enc_R[2] + (0.001*math.fabs(self.enc_odom[2,0]))**2
+        enc_R[0] = enc_R[0] + (0.0001*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
+        enc_R[1] = enc_R[1] + (0.0001*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
+        enc_R[2] = enc_R[2] + (0.01*math.fabs(self.enc_odom[2,0]))**2
         if enc_flag:
             enc_R[0] = enc_R[0] + 0.0001
             enc_R[1] = enc_R[1] + 0.0001
@@ -328,7 +333,7 @@ class state_estimate(Node):
             mag_R[0] = mag_R[0] + 0.0001
         R = np.diag([imu_R[0], imu_R[1], enc_R[0], enc_R[1], enc_R[2], self.enc_R[3], self.enc_R[4], mag_R[0]])
                 
-        self.UKF_update(z, H, R, (0,4,7))
+        self.UKF_update(self.z, self.H, R, (0,4,7))
     
         ros_stamp = Time(seconds=self.odom_time).to_msg()
         self.publish_odom(ros_stamp)
@@ -350,43 +355,44 @@ class state_estimate(Node):
         P_aug = 0.5 * (P_aug + P_aug.T) + 1e-9 * np.eye(P_aug.shape[0])
 
         # sqrt(P)
-        try:
-            S = np.linalg.cholesky(P_aug)
-        except np.linalg.LinAlgError:
-            u, s, vh = np.linalg.svd(P_aug)
-            S = u @ np.diag(np.sqrt(np.maximum(s, 0.0)))
+        S = np.linalg.cholesky(P_aug) * self.scale
         
         sigma = np.zeros((self.L, 2 * self.L + 1))
         sigma[:, 0] = x_aug[:, 0]
-        scale = np.sqrt(self.L + self.lam)
-        
-        for i in range(self.L):
-            sigma[:, i + 1] = x_aug[:, 0] + scale * S[:, i]
-            sigma[:, i + 1 + self.L] = x_aug[:, 0] - scale * S[:, i]
+        sigma[:, 1:self.L+1] = x_aug + S
+        sigma[:, self.L+1:] = x_aug - S
         return sigma
 
     def UKF_prediction(self, dt, Q):
         sigma = self.generate_sigma_points(self.x_k, self.P_k, Q)
         sigma_pred = np.zeros((self.n_x, 2 * self.L + 1))
 
-        for i in range(2 * self.L + 1):
-            x, y, theta, v, w = sigma[:5, i]
-            nv, nw = sigma[5:7, i]
-            
-            v_noisy = v + nv
-            w_noisy = w + nw
-            new_theta = theta + w_noisy * dt
+        v = sigma[3, :] + sigma[5, :]
+        w = sigma[4, :] + sigma[6, :]
 
-            if(math.fabs(w_noisy) <= 0.001):
-                mid_theta = theta + 0.5 * w_noisy * dt
-                new_x = x + v_noisy * math.cos(mid_theta) * dt
-                new_y = y + v_noisy * math.sin(mid_theta) * dt
-            else:
-                new_x = x + v_noisy/w_noisy*(math.sin(new_theta) - math.sin(theta))
-                new_y = y - v_noisy/w_noisy*(math.cos(new_theta) - math.cos(theta))
-            
-            sigma_pred[:, i] = [new_x, new_y, angle_normalize(new_theta), v_noisy, w_noisy]
+        theta = sigma[2, :]
+        sin_theta = np.sin(theta)
+        cos_theta = np.cos(theta)
 
+        new_theta = theta + w * dt
+        sin_new_theta = np.sin(new_theta)
+        cos_new_theta = np.cos(new_theta)
+
+        mask = np.abs(w) <= 1e-3
+
+        new_x = np.where(
+            mask,
+            sigma[0, :] + v * cos_theta * dt,
+            sigma[0, :] + v/w * (sin_new_theta - sin_theta)
+        )
+
+        new_y = np.where(
+            mask,
+            sigma[1, :] + v * np.sin(theta) * dt,
+            sigma[1, :] - v/w * (cos_new_theta - cos_theta)
+        )
+        sigma_pred = np.vstack([new_x, new_y, new_theta, v, w])
+        
         # Tính toán Mean mới (Circular mean cho theta)
         x_new = np.zeros((self.n_x, 1))
         x_new[[0,1,3,4], 0] = np.sum(self.Wm * sigma_pred[[0,1,3,4], :], axis=1)
@@ -397,10 +403,11 @@ class state_estimate(Node):
 
         # Tính toán Covariance mới
         P_new = np.zeros((self.n_x, self.n_x))
-        for i in range(2 * self.L + 1):
-            dx = sigma_pred[:, i:i+1] - x_new
-            dx[2, 0] = angle_normalize(dx[2, 0])
-            P_new += self.Wc[i] * (dx @ dx.T)
+        dx = sigma_pred - x_new
+        dx[2, :] = normalize_angle_vec(dx[2, :]) #nomarlization
+
+        dx_weighted = dx * self.Wc   
+        P_new = dx_weighted @ dx.T
         
         self.x_k = x_new
         self.P_k = 0.5 * (P_new + P_new.T) + np.eye(self.n_x) * 1e-9
@@ -408,68 +415,40 @@ class state_estimate(Node):
 
 
     def UKF_update(self, z, H, R, yaw_index):
+        if yaw_index is not None:
+            yaw_idx = np.atleast_1d(yaw_index)
 
-        n_z = z.shape[0]
         # full_sigma = self.generate_sigma_points(self.x_k, self.P_k, Q)
-        # self.sigma_c = full_sigma[:self.n_x, :] # Chỉ lấy 5 hàng trạng thái
+        # self.sigma_pred_c = full_sigma[:self.n_x, :] # Chỉ lấy 5 hàng trạng thái
         Z_sigma = H @ self.sigma_pred_c
         
         # Predicted measurement mean
-        z_pred = np.zeros((n_z, 1))
+        z_pred = np.sum(self.Wm * Z_sigma, axis=1, keepdims=True)
+
         if yaw_index is not None:
-            if isinstance(yaw_index, tuple):
-                for idx in yaw_index:
-                    s_sum = np.sum(self.Wm * np.sin(Z_sigma[idx, :]))
-                    c_sum = np.sum(self.Wm * np.cos(Z_sigma[idx, :]))
-                    z_pred[idx, 0] = math.atan2(s_sum, c_sum)
-                other_idx = [i for i in range(n_z) if i not in yaw_index]
-                if other_idx:
-                    z_pred[other_idx, 0] = np.sum(self.Wm * Z_sigma[other_idx, :], axis=1)
-            else:   
-                s_sum = np.sum(self.Wm * np.sin(Z_sigma[yaw_index, :]))
-                c_sum = np.sum(self.Wm * np.cos(Z_sigma[yaw_index, :]))
-                z_pred[yaw_index, 0] = math.atan2(s_sum, c_sum)
-                other_idx = [i for i in range(n_z) if i != yaw_index]
-                if other_idx:
-                    z_pred[other_idx, 0] = np.sum(self.Wm * Z_sigma[other_idx, :], axis=1)
-        else:
-            z_pred[:, 0] = np.sum(self.Wm * Z_sigma, axis=1)
+            s_sum = np.sum(self.Wm * np.sin(Z_sigma[yaw_idx, :]), axis=1)
+            c_sum = np.sum(self.Wm * np.cos(Z_sigma[yaw_idx, :]), axis=1)
+            z_pred[yaw_idx, 0] = np.arctan2(s_sum, c_sum)
 
         # Covariances
-        Pzz = np.zeros((n_z, n_z))
-        Pxz = np.zeros((self.n_x, n_z))
-        
-        for i in range(2 * self.L + 1):
-            dz = Z_sigma[:, i:i+1] - z_pred
-            if yaw_index is not None:
-                if isinstance(yaw_index, tuple):
-                    for idx in yaw_index:
-                        dz[idx, 0] = angle_normalize(dz[idx, 0])
-                else:
-                    dz[yaw_index, 0] = angle_normalize(dz[yaw_index, 0])
-            
-            dx = self.sigma_pred_c[:, i:i+1] - self.x_k
-            dx[2, 0] = angle_normalize(dx[2, 0])
-            
-            Pzz += self.Wc[i] * (dz @ dz.T)
-            Pxz += self.Wc[i] * (dx @ dz.T)
-            
-        Pzz += R
+        dz = Z_sigma - z_pred
+        dx = self.sigma_pred_c - self.x_k
+        if yaw_index is not None:
+            dz[yaw_idx, :] = normalize_angle_vec(dz[yaw_idx, :])
+        dx[2, :] = normalize_angle_vec(dx[2, :])
+
+        Pzz = (dz * self.Wc) @ dz.T + R
+        Pxz = (dx * self.Wc) @ dz.T
         
         try:
             K = np.linalg.solve(Pzz, Pxz.T).T
             dz_final = z - z_pred
             if yaw_index is not None:
-                if isinstance(yaw_index, tuple):
-                    for idx in yaw_index:
-                        dz_final[idx, 0] = angle_normalize(dz_final[idx, 0])
-                else:   
-                    dz_final[yaw_index, 0] = angle_normalize(dz_final[yaw_index, 0])
-                
+                dz_final[yaw_idx, :] = normalize_angle_vec(dz_final[yaw_idx, :])
+  
             self.x_k += K @ dz_final
             self.x_k[2, 0] = angle_normalize(self.x_k[2, 0])
             self.P_k -= K @ Pzz @ K.T
-
             self.P_k = 0.5 * (self.P_k + self.P_k.T) + np.eye(self.n_x)*1e-9
             return True
         except np.linalg.LinAlgError:

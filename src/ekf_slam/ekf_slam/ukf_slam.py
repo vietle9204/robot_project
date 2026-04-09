@@ -66,7 +66,7 @@ class UKFSLAM(Node):
         self.R = np.diag([0.05, 0.055])        # measurement noise
         # lamarks
         self.num_landmarks = 0
-        self.max_landmarks = 150    # giới hạn số landmark
+        self.max_landmarks = 70    # giới hạn số landmark
         self.landmark_score = []     # độ tin cậy
 
         # measurements in current step
@@ -244,9 +244,9 @@ class UKFSLAM(Node):
         # Q_incremental: 
         dist = math.sqrt(dx_robot**2 + dy_robot**2)
         Q_robot = np.diag([
-            0.01 * dist + 1e-12,        # Nhiễu x
-            0.01 * dist + 1e-12,        # Nhiễu y
-            0.01 * math.fabs(dtheta**2) + 1e-12   # Nhiễu theta
+            0.015 * dist + 1e-12,        # Nhiễu x
+            0.015 * dist + 1e-12,        # Nhiễu y
+            0.015 * math.fabs(dtheta**2) + 1e-12   # Nhiễu theta
         ])
  
         self.predict((dx_robot, dy_robot, dtheta), Q_robot)
@@ -643,7 +643,7 @@ class UKFSLAM(Node):
             
             features = self.extract_curvature_points(
                 point_cluster,
-                k=4, 
+                k=5, 
                 curvature_threshold=0.185,
                 range_min=0.5,
                 range_max=10.0
@@ -863,7 +863,8 @@ class UKFSLAM(Node):
 
     def adaptive_min_cluster_size(self, r):
         if r < 1.0: return 4
-        if r < 3.0: return 2
+        if r < 3.0: return 3
+        if r < 2.0: return 2
         return 1
 
 

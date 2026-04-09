@@ -63,7 +63,7 @@ class UKFSLAM(Node):
         self.P = np.eye(3) * 1e-3
         # Noise
         self.Q = np.eye(3) * 1e-3  # motion noise
-        self.R = np.diag([0.02, 0.02])        # measurement noise
+        self.R = np.diag([0.05, 0.055])        # measurement noise
         # lamarks
         self.num_landmarks = 0
         self.max_landmarks =150     # giới hạn số landmark
@@ -76,7 +76,7 @@ class UKFSLAM(Node):
         self.new_features = []
 
         #UKF
-        self.alpha, self.kappa, self.beta = 0.01, 0.0, 2.0
+        self.alpha, self.kappa, self.beta = 0.001, 0.0, 2.0
 
         #time parameter
         self.last_odom = None      #[x, y, theta]
