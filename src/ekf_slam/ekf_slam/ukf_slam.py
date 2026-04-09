@@ -276,11 +276,7 @@ class UKFSLAM(Node):
                 self.association(features, z_hat, S)
 
                 # 3. UKF BATCH UPDATE
-                batch_obs = []
-                for i in range(len(self.z)):
-                    r, b = self.z[i]
-                    lm_id = self.z_lm_ids[i]
-                    batch_obs.append((r, b, lm_id))
+                batch_obs = [(r, b, lm_id) for (r, b), lm_id in zip(self.z, self.z_lm_ids)]
 
                 if batch_obs:
                     self.update(batch_obs, z_hat, S, Pxz) 
@@ -325,15 +321,18 @@ class UKFSLAM(Node):
             P = 0.5 * (P + P.T) 
             idx_diag = np.diag_indices_from(P)
             P[idx_diag] = np.maximum(P[idx_diag], 1e-9)
-            U = cholesky((n + lambd) * P)
+            U = cholesky(P)
         except np.linalg.LinAlgError:
             return 
 
-        sigma_points = np.zeros((2 * n + 1, n))
-        sigma_points[0] = x.flatten()
-        for k in range(n):
-            sigma_points[k + 1] = x.flatten() + U[k]
-            sigma_points[k + n + 1] = x.flatten() - U[k]
+        x_flat = x.flatten()
+        scale = np.sqrt(n + lambd)
+
+        sigma_points = np.zeros((2*n + 1, n))
+        sigma_points[0] = x_flat
+
+        sigma_points[1:n+1]     = x_flat + scale * U.T
+        sigma_points[n+1:2*n+1] = x_flat - scale * U.T
 
         return w_m, w_c, sigma_points
     
@@ -343,55 +342,54 @@ class UKFSLAM(Node):
         n: số lượng trạng thái (3 + 2*M)
         m: số lượng Landmark hiện có
         """
-        num_sigmas = sigmas.shape[0]
-        num_lms = self.num_landmarks
+        num_sigmas = sigmas.shape[0]        #S
+        num_lms = self.num_landmarks        #M
         z_dim_full = 2 * num_lms
         
         # 1. Khởi tạo ma trận chứa các Sigma Points trong không gian đo lường
         # Shape: (2*n + 1, 2*m)
-        Z_sigmas_full = np.zeros((num_sigmas, z_dim_full))
+
+        xr = sigmas[:, 0]      # (S,)
+        yr = sigmas[:, 1]      # (S,)
+        theta = sigmas[:, 2]   # (S,)
+
+        lm = sigmas[:, 3:].reshape(num_sigmas, num_lms, 2)   #(S, 2*M) --> (S, M, 2) 
+        mx = lm[:, :, 0]                       # (S, M)
+        my = lm[:, :, 1]                       # (S, M)
         
-        for i in range(num_sigmas):
-            xr, yr, theta = sigmas[i, 0:3]
-            
-            for j in range(num_lms):
-                lm_idx = 3 + 2 * j
-                mx, my = sigmas[i, lm_idx : lm_idx + 2]
-                
-                dx, dy = mx - xr, my - yr
-                dist = np.sqrt(dx**2 + dy**2)
-                bearing = normalize_angle(np.arctan2(dy, dx) - theta)
-                
-                Z_sigmas_full[i, 2*j] = dist
-                Z_sigmas_full[i, 2*j+1] = bearing
+        dx = mx - xr[:, None]                  # (S, M)
+        dy = my - yr[:, None]  
+
+        dist = np.sqrt(dx**2 + dy**2)          # (S, M)
+        bearing = np.arctan2(dy, dx) - theta[:, None]
+
+        Z_sigmas_full = np.zeros((num_sigmas, z_dim_full))
+        Z_sigmas_full[:, 0::2] = dist
+        Z_sigmas_full[:, 1::2] = bearing
 
         # 2. Tính Kỳ vọng dự báo (Z_pred_full)
-        # Lưu ý: Với góc, ta vẫn nên dùng sin/cos mean để an toàn
-        Z_pred_full = np.zeros(z_dim_full)
-        for j in range(num_lms):
-            Z_pred_full[2*j] = np.sum(w_m * Z_sigmas_full[:, 2*j])
-            
-            s_mean = np.sum(w_m * np.sin(Z_sigmas_full[:, 2*j+1]))
-            c_mean = np.sum(w_m * np.cos(Z_sigmas_full[:, 2*j+1]))
-            Z_pred_full[2*j+1] = np.arctan2(s_mean, c_mean)
+        dist_mean = np.sum(w_m[:, None] * dist, axis=0)
+        # --- mean góc ---
+        sin_mean = np.sum(w_m[:, None] * np.sin(bearing), axis=0)
+        cos_mean = np.sum(w_m[:, None] * np.cos(bearing), axis=0)
+        bearing_mean = np.arctan2(sin_mean, cos_mean)
 
-        # 3. Tính Hiệp phương sai S_full và Pxz_full
-        S_full = np.zeros((z_dim_full, z_dim_full))
-        Pxz_full = np.zeros((sigmas.shape[1], z_dim_full))
-        
+        # --- gộp lại ---
+        Z_pred_full = np.empty(z_dim_full)
+        Z_pred_full[0::2] = dist_mean
+        Z_pred_full[1::2] = bearing_mean
+
+        # 3. Tính Hiệp phương sai S_full và Pxz_full 
         # Tiền tính toán dx (state error) cho Pxz
-        X_diff = sigmas - self.x.T
-        for i in range(num_sigmas):
-            X_diff[i, 2] = normalize_angle(X_diff[i, 2])
+        X_diff = sigmas - self.x.reshape(1,-1)
+        X_diff[:, 2] = (X_diff[:, 2] + np.pi) % (2*np.pi) - np.pi  #normalization
 
-        for i in range(num_sigmas):
-            # Tính sai số đo lường dZ
-            dZ = Z_sigmas_full[i] - Z_pred_full
-            for j in range(num_lms):
-                dZ[2*j+1] = normalize_angle(dZ[2*j+1])
-            
-            S_full += w_c[i] * np.outer(dZ, dZ)
-            Pxz_full += w_c[i] * np.outer(X_diff[i], dZ)
+        dZ = Z_sigmas_full - Z_pred_full   # (S, 2M)
+        dZ[:, 1::2] = (dZ[:, 1::2] + np.pi) % (2*np.pi) - np.pi   #normalize
+
+        Wc = w_c.reshape(-1, 1)
+        S_full = (Wc * dZ).T @ dZ
+        Pxz_full = (Wc * X_diff).T @ dZ
 
         return Z_pred_full, S_full, Pxz_full
     
@@ -479,17 +477,25 @@ class UKFSLAM(Node):
         z_actual = np.zeros((z_dim, 1))
         z_hat = np.zeros((z_dim, 1))
         
-        for i, (r, b, lm_id) in enumerate(observations):
-            # Tọa độ đo đạc thực tế
-            z_actual[2*i] = r
-            z_actual[2*i+1] = b
-            
-            # Trích xuất dự báo tương ứng từ Z_pred_full
-            z_hat[2*i] = Z_pred_full[2*lm_id]
-            z_hat[2*i+1] = Z_pred_full[2*lm_id+1]
-            
-            # Lưu lại vị trí các cột trong ma trận S_full và Pxz_full
-            matched_indices.extend([2*lm_id, 2*lm_id+1])
+        obs = np.array(observations)     # (m,3)
+        r = obs[:, 0]
+        b = obs[:, 1]
+        lm_id = obs[:, 2].astype(int)
+
+        # --- z_actual ---
+        z_actual = np.empty((2*m, 1))
+        z_actual[0::2, 0] = r
+        z_actual[1::2, 0] = b
+
+        # --- z_hat ---
+        z_hat = np.empty((2*m, 1))
+        z_hat[0::2, 0] = Z_pred_full[2*lm_id]
+        z_hat[1::2, 0] = Z_pred_full[2*lm_id + 1]
+
+        # --- matched_indices ---
+        matched_indices = np.empty(2*m, dtype=int)
+        matched_indices[0::2] = 2*lm_id
+        matched_indices[1::2] = 2*lm_id + 1
 
         # --- 2. Trích xuất các ma trận con (Slicing) ---
         # S_match kích thước (2m x 2m)
@@ -498,8 +504,8 @@ class UKFSLAM(Node):
         Pxz = Pxz_full[:, matched_indices]
 
         # --- 3. Cộng nhiễu đo lường R ---
-        # Vì R được cộng vào từng landmark đơn lẻ, ta dùng ma trận khối đường chéo
-        S = S + block_diag(*self.R_z)
+        R = np.kron(np.eye(m), self.R_z[0])
+        S = S + R
 
         # --- 4. Tính toán Kalman Gain và Cập nhật ---
         try:
@@ -512,8 +518,7 @@ class UKFSLAM(Node):
             
             # Innovation y
             y = z_actual - z_hat
-            for j in range(m):
-                y[2*j+1, 0] = normalize_angle(y[2*j+1, 0])
+            y[1::2, 0] = (y[1::2, 0] + np.pi) % (2*np.pi) - np.pi
                 
             # Cập nhật State x
             self.x = self.x + K @ y
@@ -883,6 +888,11 @@ class UKFSLAM(Node):
         self.new_features = []
         self.lm_observed = np.zeros(self.num_landmarks, dtype=bool)
 
+        if self.num_landmarks == 0:
+            for z_obs, R_obs in features:
+                self.new_features.append((z_obs, R_obs))
+            return
+
         # 1. Trích xuất các khối đường chéo S cho từng Landmark
         # S_diag_blocks[lm_id] = ma trận 2x2
         S_diag_blocks = [
@@ -893,24 +903,22 @@ class UKFSLAM(Node):
         pairs = []  # (d2, feat_id, lm_id)
 
         for i, (z_obs, R_obs) in enumerate(features):
-            for lm_id in range(self.num_landmarks):
-                # Lấy dự báo r, b của landmark này
-                z_pred = Z_pred_full[2*lm_id : 2*lm_id+2]
-                
-                # Tính Innovation (sai số quan sát)
-                v = z_obs - z_pred
-                v[1] = normalize_angle(v[1]) # Quan trọng: chuẩn hóa góc
-                if(abs(v[0]) > 3.0 or abs(v[1]) > np.pi/6):
-                    continue
+            # --- reshape ---
+            # z_obs = z_obs.reshape(1, 2)   # (1,2)
+            # Z_pred = Z_pred_full.reshape(-1, 2)   # (M,2)
 
-                # S_total = S_robot_map + R_sensor
+            # --- innovation ---
+            v = Z_pred_full.reshape(-1, 2) - z_obs   # (M,2)
+            v[:, 1] = (v[:, 1] + np.pi) % (2*np.pi) - np.pi
+
+            # gating thô
+            mask = (np.abs(v[:,0]) < 3.0) & (np.abs(v[:,1]) < np.pi/6)
+            valid_ids = np.where(mask)[0]
+
+            for lm_id in valid_ids:
                 S_total = S_diag_blocks[lm_id] + R_obs
-                
                 try:
-                    # d2 = v^T * S_total^-1 * v
-                    inv_S = np.linalg.inv(S_total)
-                    d2 = v.T @ inv_S @ v
-                    
+                    d2 = v[lm_id].T @ np.linalg.solve(S_total, v[lm_id])
                     if d2 < chi2_threshold:
                         pairs.append((d2, i, lm_id))
                 except np.linalg.LinAlgError:

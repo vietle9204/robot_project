@@ -26,7 +26,7 @@ def generate_launch_description():
 
         Node(
             package='ekf_slam',
-            executable='ukf_slam_2',
+            executable='ukf_slam',
             name='ukf_slam',
             output='screen',
         ),
