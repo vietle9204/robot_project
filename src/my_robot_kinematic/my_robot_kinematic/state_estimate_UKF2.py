@@ -67,7 +67,7 @@ class state_estimate(Node):
 
         # define state vector
         self.x_k = np.zeros((5, 1))   # [x, y, theta, v, w]
-        self.Q_k = np.diag([0.0005, 0.0005])
+        self.Q_k = np.diag([0.001, 0.001])
         self.P_k = np.eye(5) * 0.1
         #define measurement vector
         self.z = np.zeros((8,1))
