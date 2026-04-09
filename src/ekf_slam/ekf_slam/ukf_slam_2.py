@@ -867,7 +867,7 @@ class UKFSLAM(Node):
     # =========================
     # 5. DATA ASSOCIATION
     # =========================
-    def association(self, features, Z_pred_full, S_full, chi2_threshold=0.9):
+    def association(self, features, Z_pred_full, S_full, chi2_threshold=2.5):
         """
         features: list of (z_obs, R_obs) từ extract_features_from_scan
         Z_pred_full: Vector (2*M,) dự báo [r1, b1, r2, b2...]
