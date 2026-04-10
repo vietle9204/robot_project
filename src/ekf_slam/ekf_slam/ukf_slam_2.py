@@ -433,7 +433,7 @@ class UKFSLAM(Node):
         n = x.shape[0]
 
         # generate sigma points
-        w_m, w_c, sigma_points = self.generate_sigma_points(x, P, 10.0)
+        w_m, w_c, sigma_points = self.generate_sigma_points(x, P, 100.0)
         # -----------Dự báo từng Sigma Point qua Motion Model---------
         Z_sigmas = np.zeros((2*n + 1, 2))   
         z_pred = np.zeros((2, 1))
@@ -888,7 +888,7 @@ class UKFSLAM(Node):
     # =========================
     # 5. DATA ASSOCIATION
     # =========================
-    def association(self, features, Z_pred_full, S_full, chi2_threshold=0.55):
+    def association(self, features, Z_pred_full, S_full, chi2_threshold=0.85):
         """
         features: list of (z_obs, R_obs) từ extract_features_from_scan
         Z_pred_full: Vector (2*M,) dự báo [r1, b1, r2, b2...]
