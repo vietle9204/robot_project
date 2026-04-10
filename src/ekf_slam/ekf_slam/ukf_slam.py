@@ -76,7 +76,7 @@ class UKFSLAM(Node):
         self.new_features = []
 
         #UKF
-        self.alpha, self.kappa, self.beta = 0.05, 0.0, 2.0
+        self.alpha, self.kappa, self.beta = 0.01, 0.0, 2.0
 
         self.w_m, self.w_c, self.sigma = None, None, None
 
@@ -876,7 +876,7 @@ class UKFSLAM(Node):
     # =========================
     # 5. DATA ASSOCIATION
     # =========================
-    def association(self, features, Z_pred_full, S_full, chi2_threshold=0.65):
+    def association(self, features, Z_pred_full, S_full, chi2_threshold=0.5):
         """
         features: list of (z_obs, R_obs) từ extract_features_from_scan
         Z_pred_full: Vector (2*M,) dự báo [r1, b1, r2, b2...]
