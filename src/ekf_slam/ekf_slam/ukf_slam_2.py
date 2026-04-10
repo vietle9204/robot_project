@@ -367,7 +367,7 @@ class UKFSLAM(Node):
         n = x.shape[0]
 
         # generate sigma points
-        w_m, w_c, sigma_points = self.generate_sigma_points(x, P, 0.01)
+        w_m, w_c, sigma_points = self.generate_sigma_points(x, P, 1.0)
         # -----------Dự báo từng Sigma Point qua Motion Model---------
         sigmas_f = np.copy(sigma_points) 
         pts = sigma_points[:, 2] 
