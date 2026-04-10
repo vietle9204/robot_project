@@ -63,7 +63,7 @@ class UKFSLAM(Node):
         self.P = np.eye(3) * 1e-3
         # Noise
         self.Q = np.eye(3) * 1e-3  # motion noise
-        self.R = np.diag([0.05, 0.055])        # measurement noise
+        self.R = np.diag([0.02, 0.025])        # measurement noise
         # lamarks
         self.num_landmarks = 0
         self.max_landmarks =150     # giới hạn số landmark
@@ -76,7 +76,7 @@ class UKFSLAM(Node):
         self.new_features = []
 
         #UKF
-        self.alpha, self.kappa, self.beta = 0.001, 0.0, 2.0
+        self.alpha, self.kappa, self.beta = 0.01, 0.0, 2.0
 
         #time parameter
         self.last_odom = None      #[x, y, theta]
@@ -247,9 +247,9 @@ class UKFSLAM(Node):
         # Q_incremental: 
         dist = math.sqrt(dx_robot**2 + dy_robot**2)
         Q_robot = np.diag([
-            0.015 * dist + 1e-12,        # Nhiễu x
-            0.015 * dist + 1e-12,        # Nhiễu y
-            0.015 * math.fabs(dtheta**2) + 1e-12  # Nhiễu theta
+            0.05 * dist + 1e-12,        # Nhiễu x
+            0.05 * dist + 1e-12,        # Nhiễu y
+            0.05* math.fabs(dtheta**2) + 1e-12  # Nhiễu theta
         ])
 
         # # Thực hiện phép biến đổi (Propagation)
@@ -367,7 +367,7 @@ class UKFSLAM(Node):
         n = x.shape[0]
 
         # generate sigma points
-        w_m, w_c, sigma_points = self.generate_sigma_points(x, P, 20)
+        w_m, w_c, sigma_points = self.generate_sigma_points(x, P, 0.01)
         # -----------Dự báo từng Sigma Point qua Motion Model---------
         sigmas_f = np.copy(sigma_points) 
         pts = sigma_points[:, 2] 
@@ -414,7 +414,7 @@ class UKFSLAM(Node):
         self.P[:3, :3] = P_yy[:3, :3] 
         self.P[:3, 3:] = P_RL_new
         self.P[3:, :3] = P_RL_new.T
-        # self.P[3:, 3:] = self.P[3:, 3:] 
+        self.P[3:, 3:] = self.P[3:, 3:] + 1e-5*np.eye(self.x.shape[0]-3)
 
         self.x[:3, 0] = y[:3, 0]  
 
@@ -433,7 +433,7 @@ class UKFSLAM(Node):
         n = x.shape[0]
 
         # generate sigma points
-        w_m, w_c, sigma_points = self.generate_sigma_points(x, P, 30)
+        w_m, w_c, sigma_points = self.generate_sigma_points(x, P, 1.0)
         # -----------Dự báo từng Sigma Point qua Motion Model---------
         Z_sigmas = np.zeros((2*n + 1, 2))   
         z_pred = np.zeros((2, 1))
@@ -519,23 +519,28 @@ class UKFSLAM(Node):
 
         # --- 2. Trích xuất các ma trận con (Slicing) ---
         # S_match kích thước (2m x 2m)
-        S = P_zz[np.ix_(matched_indices, matched_indices)] + block_diag(*self.R_z)
-        
+        # S = P_zz[np.ix_(matched_indices, matched_indices)] + block_diag(*self.R_z)
+        R_batch = block_diag(*R)
+        PHt = self.P @ H_f.T
+        S = H_f @ PHt + R_batch
 
         # --- 4. Tính toán Kalman Gain và Cập nhật ---
-        K = self.P @ H_f.T @ np.linalg.inv(S)  # Kích thước (n x 2m)
-    
+        K = np.linalg.solve(S.T, PHt.T).T
+
         # Innovation y
         y = z_actual - z_hat
-        for j in range(m):
-            y[2*j+1, 0] = normalize_angle(y[2*j+1, 0])
+        y[1::2, 0] = np.array([normalize_angle(angle) for angle in y[1::2, 0]])
                 
         # Cập nhật State x
         self.x = self.x + K @ y
         self.x[2, 0] = normalize_angle(self.x[2, 0])
             
-        # Cập nhật Covariance 
-        self.P = self.P - K @ S @ K.T
+        I = np.eye(n)
+        IKH = I - K @ H_f
+        self.P = IKH @ self.P @ IKH.T + K @ R_batch @ K.T
+    
+    # Force symmetry (Chống trôi số học - Nguyên nhân gây nhảy landmark)
+        self.P = 0.5 * (self.P + self.P.T)
             
 
     # =========================
@@ -561,24 +566,39 @@ class UKFSLAM(Node):
         # 3. Mở rộng Vector trạng thái x
         self.x = np.vstack((self.x, [[mx], [my]]))
 
-        # 4. Mở rộng ma trận Hiệp phương sai P
+       # --- 4. MỞ RỘNG MA TRẬN P VỚI TƯƠNG QUAN ---
         n_old = self.P.shape[0]
-        P_new = np.zeros((n_old + 2, n_old + 2))
-        P_new[:n_old, :n_old] = self.P
         
-        # --- CẢI TIẾN: Tính toán sự tương quan ban đầu ---
-        # Thay vì dùng diag cố định, ta dùng một giá trị phản ánh:
-        # P_landmark = P_robot + R_sensor (xấp xỉ đơn giản)
-        # Điều này giúp UKF biết rằng nếu Robot trôi, Landmark cũng trôi theo.
-        P_robot = self.P[0:2, 0:2]
+        # Jacobian của hàm chuyển đổi (Polar -> Cartesian) theo Robot [xr, yr, theta]
+        Gr = np.array([
+            [1, 0, -r * np.sin(phi)],
+            [0, 1,  r * np.cos(phi)]
+        ])
         
-        # Ma trận nhiễu khởi tạo cho Landmark (nên lớn hơn R_obs một chút để linh hoạt)
-        # 0.5 là giá trị an toàn nếu bạn không muốn tính Jacobian phức tạp ở đây
-        P_lm_init = R_obs + np.eye(2) * 0.00001 
-        
-        P_new[n_old:, n_old:] = P_lm_init
+        # Jacobian của hàm chuyển đổi theo phép đo [r, b]
+        Gz = np.array([
+            [np.cos(phi), -r * np.sin(phi)],
+            [np.sin(phi),  r * np.cos(phi)]
+        ])
 
-        # Cập nhật lại P toàn cục
+        # A. Tính tương quan giữa Map hiện tại và Landmark mới
+        # P_new_column = P_old * Gr.T
+        # Kích thước: (n_old x 3) * (3 x 2) = (n_old x 2)
+        P_robot_map = self.P[:, :3] 
+        P_cross = P_robot_map @ Gr.T
+
+        # B. Tính hiệp phương sai tự thân của Landmark mới (Uncertainty)
+        # P_ll = Gr * P_robot * Gr.T + Gz * R_obs * Gz.T
+        P_robot_only = self.P[0:3, 0:3]
+        P_ll = Gr @ P_robot_only @ Gr.T + Gz @ R_obs @ Gz.T
+
+        # C. Ghép vào ma trận P mới
+        P_new = np.zeros((n_old + 2, n_old + 2))
+        P_new[:n_old, :n_old] = self.P           # Map cũ
+        P_new[:n_old, n_old:] = P_cross         # Tương quan (Cột phải)
+        P_new[n_old:, :n_old] = P_cross.T       # Tương quan (Hàng dưới)
+        P_new[n_old:, n_old:] = P_ll            # Landmark mới
+
         self.P = P_new
 
         # 5. Cập nhật các biến quản lý
@@ -631,7 +651,7 @@ class UKFSLAM(Node):
 
         point_cloud = np.column_stack((xs, ys, ranges, angles, valid_indices))
 
-        segment_clusters = self.segment_scan(point_cloud, 0.5, 3)
+        segment_clusters = self.segment_scan(point_cloud, 0.3, 3)
 
         # 2. Chạy trích xuất đặc trưng cho TỪNG cụm
         curv_pts = []
@@ -825,7 +845,7 @@ class UKFSLAM(Node):
         if len(cluster) == 0: return cluster
         
         rs = cluster[:, 2]
-        r_mean = np.mean(rs)
+        r_mean = np.median(rs)
 
         mask = np.abs(rs - r_mean) < range_thresh
         return cluster[mask]
@@ -860,14 +880,15 @@ class UKFSLAM(Node):
 
     def adaptive_min_cluster_size(self, r):
         if r < 1.0: return 4
-        if r < 3.0: return 2
+        if r < 3.0: return 3
+        if r < 2.0: return 2
         return 1
 
 
     # =========================
     # 5. DATA ASSOCIATION
     # =========================
-    def association(self, features, Z_pred_full, S_full, chi2_threshold=0.65):
+    def association(self, features, Z_pred_full, S_full, chi2_threshold=0.55):
         """
         features: list of (z_obs, R_obs) từ extract_features_from_scan
         Z_pred_full: Vector (2*M,) dự báo [r1, b1, r2, b2...]
@@ -879,6 +900,11 @@ class UKFSLAM(Node):
         self.new_features = []
         self.lm_observed = np.zeros(self.num_landmarks, dtype=bool)
 
+        if self.num_landmarks == 0:
+            for z_obs, R_obs in features:
+                self.new_features.append((z_obs, R_obs))
+            return
+
         # 1. Trích xuất các khối đường chéo S cho từng Landmark
         # S_diag_blocks[lm_id] = ma trận 2x2
         S_diag_blocks = [
@@ -889,22 +915,22 @@ class UKFSLAM(Node):
         pairs = []  # (d2, feat_id, lm_id)
 
         for i, (z_obs, R_obs) in enumerate(features):
-            for lm_id in range(self.num_landmarks):
-                # Lấy dự báo r, b của landmark này
-                z_pred = Z_pred_full[2*lm_id : 2*lm_id+2]
-                
-                # Tính Innovation (sai số quan sát)
-                v = z_obs - z_pred
-                v[1] = normalize_angle(v[1]) # Quan trọng: chuẩn hóa góc
-                
-                # S_total = S_robot_map + R_sensor
+            # --- reshape ---
+            # z_obs = z_obs.reshape(1, 2)   # (1,2)
+            # Z_pred = Z_pred_full.reshape(-1, 2)   # (M,2)
+
+            # --- innovation ---
+            v = Z_pred_full.reshape(-1, 2) - z_obs   # (M,2)
+            v[:, 1] = (v[:, 1] + np.pi) % (2*np.pi) - np.pi
+
+            # gating thô
+            mask = (np.abs(v[:,0]) < 3.0) & (np.abs(v[:,1]) < np.pi/6)
+            valid_ids = np.where(mask)[0]
+
+            for lm_id in valid_ids:
                 S_total = S_diag_blocks[lm_id] + R_obs
-                
                 try:
-                    # d2 = v^T * S_total^-1 * v
-                    inv_S = np.linalg.inv(S_total)
-                    d2 = v.T @ inv_S @ v
-                    
+                    d2 = v[lm_id].T @ np.linalg.solve(S_total, v[lm_id])
                     if d2 < chi2_threshold:
                         pairs.append((d2, i, lm_id))
                 except np.linalg.LinAlgError:
@@ -936,9 +962,6 @@ class UKFSLAM(Node):
             else:
                 # Trả về cả z và R để khởi tạo landmark mới chính xác hơn
                 self.new_features.append((z_obs, R_obs))
-
-
-
 
 def main(args=None):
     rclpy.init(args=args)

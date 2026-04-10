@@ -260,47 +260,47 @@ class UKFSLAM(Node):
 
 
     def scan_cb(self, scan: LaserScan):
-            # 1. Trích xuất đặc trưng
-            features = self.extract_features_from_scan(scan)
-            if len(features) > 0:
+        # 1. Trích xuất đặc trưng
+        features = self.extract_features_from_scan(scan)
+        if len(features) > 0:
         # --- 1. Tham số Unscented Transform (UT) ---
-                if self.sigma is not None:
-                    w_m, w_c, sigmas = self.w_m, self.w_c, self.sigma
-                else:
-                    # return
-                    w_m, w_c, sigmas = self.generate_sigma_points(self.x, self.P)
+            if self.sigma is not None:
+                w_m, w_c, sigmas = self.w_m, self.w_c, self.sigma
+            else:
+                # return
+                w_m, w_c, sigmas = self.generate_sigma_points(self.x, self.P)
 
                 # --- 3. Measurement Model (Dự đoán z cho các landmark quan sát được) ---
-                z_hat, S, Pxz = self.predict_all_measurements(sigmas, w_m, w_c)
-                # 2. Data association (Hàm này sẽ lấp đầy self.z và self.new_features)
-                self.association(features, z_hat, S)
+            z_hat, S, Pxz = self.predict_all_measurements(sigmas, w_m, w_c)
+            # 2. Data association (Hàm này sẽ lấp đầy self.z và self.new_features)
+            self.association(features, z_hat, S)
 
-                # 3. UKF BATCH UPDATE
-                batch_obs = [(r, b, lm_id) for (r, b), lm_id in zip(self.z, self.z_lm_ids)]
+            # 3. UKF BATCH UPDATE
+            batch_obs = [(r, b, lm_id) for (r, b), lm_id in zip(self.z, self.z_lm_ids)]
 
-                if batch_obs:
-                    self.update(batch_obs, z_hat, S, Pxz) 
+            if batch_obs:
+                self.update(batch_obs, z_hat, S, Pxz) 
 
-                # 4. Thêm landmark mới (Sử dụng dữ liệu từ association)
-                for z in self.new_features:
-                    if self.num_landmarks < self.max_landmarks:
-                        self.add_landmark(z)
-                    else:
-                        # Nếu map đầy, thay thế landmark tệ nhất
-                        low_score_id = np.argmin(self.landmark_score)
-                        self.remove_landmark(low_score_id)
-                        self.add_landmark(z)
+            # 4. Thêm landmark mới (Sử dụng dữ liệu từ association)
+            for z in self.new_features:
+                if self.num_landmarks < self.max_landmarks:
+                    self.add_landmark(z)
+                else:
+                # Nếu map đầy, thay thế landmark tệ nhất
+                    low_score_id = np.argmin(self.landmark_score)
+                    self.remove_landmark(low_score_id)
+                    self.add_landmark(z)
 
-                # Đảm bảo góc luôn chuẩn hóa sau khi update
-                self.x[2, 0] = normalize_angle(self.x[2, 0])
+            # Đảm bảo góc luôn chuẩn hóa sau khi update
+            self.x[2, 0] = normalize_angle(self.x[2, 0])
 
-            # 5. Publish & Log
-            self.publish_pose(scan.header.stamp)
-            self.publish_map(scan.header.stamp)
-            self.get_logger().info(f"EKF-SLAM: num_landmarks={self.num_landmarks}, pose=({self.x[0,0]:.4f}, {self.x[1,0]:.4f}, {self.x[2,0]:.4f})")
+        # 5. Publish & Log
+        self.publish_pose(scan.header.stamp)
+        self.publish_map(scan.header.stamp)
+        self.get_logger().info(f"EKF-SLAM: num_landmarks={self.num_landmarks}, pose=({self.x[0,0]:.4f}, {self.x[1,0]:.4f}, {self.x[2,0]:.4f})")
             # self.get_logger().info(...)
 
-            w_m, w_c, sigmas = None, None, None
+        w_m, w_c, sigmas = None, None, None
     
     #=================
     def generate_sigma_points(self, x, P):
