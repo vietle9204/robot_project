@@ -66,7 +66,7 @@ class UKFSLAM(Node):
         self.R = np.diag([0.05, 0.055])        # measurement noise
         # lamarks
         self.num_landmarks = 0
-        self.max_landmarks = 70    # giới hạn số landmark
+        self.max_landmarks = 149    # giới hạn số landmark
         self.landmark_score = []     # độ tin cậy
 
         # measurements in current step
