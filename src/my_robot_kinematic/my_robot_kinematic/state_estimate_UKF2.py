@@ -54,7 +54,7 @@ class state_estimate(Node):
         self.L = self.n_x + self.n_w
 
         # define sigma point parameter
-        self.alpha = 0.1
+        self.alpha = 0.3
         self.beta = 2
         self.kappa = 0
         self.lam = self.alpha**2 * (self.L + self.kappa) - self.L

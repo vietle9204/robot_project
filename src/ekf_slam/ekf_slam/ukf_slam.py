@@ -77,7 +77,7 @@ class UKFSLAM(Node):
         self.new_features = []
 
         #UKF
-        self.alpha, self.kappa, self.beta = 0.01, 0.0, 2.0
+        self.alpha, self.kappa, self.beta = 0.005, 0.0, 2.0
 
         self.w_m, self.w_c, self.sigma = None, None, None
 
@@ -652,7 +652,7 @@ class UKFSLAM(Node):
         point_cloud[:,3] = angles
         point_cloud[:,4] = valid_indices
 
-        segment_clusters = self.segment_scan(point_cloud, 0.2, 3)
+        segment_clusters = self.segment_scan(point_cloud, 0.3, 3)
 
         # 2. Chạy trích xuất đặc trưng cho TỪNG cụm
         # clusters = []
