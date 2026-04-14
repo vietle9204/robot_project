@@ -297,8 +297,8 @@ class state_estimate(Node):
 
         # Predic
         Q = self.Q_k.copy()
-        Q[0,0] = Q[0,0] + 4.0*max(0.0, -4*1e-4 + (math.fabs(enc_v - self.x_k[3,0])**2)) + 10*max(0.0, -10*1e-4+ (math.fabs(enc_v  - self.last_enc_msg.twist.linear.x)**2))
-        Q[1,1] = Q[1,1] + 4.0*max(0.0, -10*1e-4 + (math.fabs(0.5*(enc_w + angular_vel_yaw) - self.x_k[4,0])**2)) + 10*max(0.0, -5*1e-3 + (math.fabs(0.5*(enc_w - self.last_enc_msg.twist.angular.z) + 0.5*(angular_vel_yaw - self.last_imu_msg.angular_velocity.z))**2))
+        Q[0,0] = Q[0,0] + 4.0*max(0.0, -1*1e-3 + (math.fabs(enc_v - self.x_k[3,0])**2)) + 10*max(0.0, -10*1e-4+ (math.fabs(enc_v  - self.last_enc_msg.twist.linear.x)**2))
+        Q[1,1] = Q[1,1] + 4.0*max(0.0, -10*1e-3 + (math.fabs(0.5*(enc_w + angular_vel_yaw) - self.x_k[4,0])**2)) + 10*max(0.0, -20*1e-3 + (math.fabs(0.5*(enc_w - self.last_enc_msg.twist.angular.z) + 0.5*(angular_vel_yaw - self.last_imu_msg.angular_velocity.z))**2))
 
         predict_dt = t_min - self.odom_time
         self.UKF_prediction(predict_dt, Q)
