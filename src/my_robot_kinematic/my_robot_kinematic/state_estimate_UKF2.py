@@ -67,7 +67,7 @@ class state_estimate(Node):
 
         # define state vector
         self.x_k = np.zeros((5, 1))   # [x, y, theta, v, w]
-        self.Q_k = np.diag([0.0005, 0.0005])
+        self.Q_k = np.diag([0.005, 0.005])
         self.P_k = np.eye(5) * 0.1
         #define measurement vector
         self.z = np.zeros((8,1))
@@ -317,20 +317,20 @@ class state_estimate(Node):
         self.z[7,0] = mag_yaw 
 
         imu_R = self.imu_R.copy()
-        imu_R[0] = imu_R[0] + (0.02*math.fabs(self.imu_theta))**2
+        imu_R[0] = imu_R[0] + (0.005*math.fabs(self.imu_theta))**2
         if imu_flag:
-            imu_R[0] = imu_R[0] + 0.0001
+            imu_R[0] = imu_R[0] + 0.00005
         enc_R = self.enc_R.copy()
-        enc_R[0] = enc_R[0] + (0.0001*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
-        enc_R[1] = enc_R[1] + (0.0001*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
-        enc_R[2] = enc_R[2] + (0.01*math.fabs(self.enc_odom[2,0]))**2
+        enc_R[0] = enc_R[0] + (0.000025*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
+        enc_R[1] = enc_R[1] + (0.000025*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
+        enc_R[2] = enc_R[2] + (0.005*math.fabs(self.enc_odom[2,0]))**2
         if enc_flag:
-            enc_R[0] = enc_R[0] + 0.0001
-            enc_R[1] = enc_R[1] + 0.0001
-            enc_R[2] = enc_R[2] + 0.0001
+            enc_R[0] = enc_R[0] + 0.00005
+            enc_R[1] = enc_R[1] + 0.00005
+            enc_R[2] = enc_R[2] + 0.00005
         mag_R = self.mag_R.copy()
         if mag_flag:
-            mag_R[0] = mag_R[0] + 0.0001
+            mag_R[0] = mag_R[0] + 0.00001
         R = np.diag([imu_R[0], imu_R[1], enc_R[0], enc_R[1], enc_R[2], self.enc_R[3], self.enc_R[4], mag_R[0]])
                 
         self.UKF_update(self.z, self.H, R, (0,4,7))
