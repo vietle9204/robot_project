@@ -77,7 +77,7 @@ class UKFSLAM(Node):
         self.new_features = []
 
         #UKF
-        self.alpha, self.kappa, self.beta = 0.001, 0.0, 2.0
+        self.alpha, self.kappa, self.beta = 0.002, 0.0, 2.0
 
         self.w_m, self.w_c, self.sigma = None, None, None
 
@@ -247,9 +247,9 @@ class UKFSLAM(Node):
         # Q_incremental: 
         dist = math.sqrt(dx_robot**2 + dy_robot**2)
         Q_robot = np.diag([
-            0.01 * dist + 1e-12,        # Nhiễu x
-            0.01 * dist + 1e-12,        # Nhiễu y
-            0.01 * math.fabs(dtheta**2) + 1e-12   # Nhiễu theta
+            0.015 * dist + 1e-12,        # Nhiễu x
+            0.015 * dist + 1e-12,        # Nhiễu y
+            0.015 * math.fabs(dtheta**2) + 1e-12   # Nhiễu theta
         ])
  
         self.predict((dx_robot, dy_robot, dtheta), Q_robot)
@@ -449,7 +449,7 @@ class UKFSLAM(Node):
         # Xoay Q từ Robot Frame sang Global Frame
         Q_global = R @ Q @ R.T
         # Sau đó mới gán vào Q_model lớn
-        Q_model = np.eye(n)*1e-12
+        Q_model = np.zeros((n, n))
         Q_model[:3, :3] = Q_global
 
         # P_new = np.zeros_like(self.P)
