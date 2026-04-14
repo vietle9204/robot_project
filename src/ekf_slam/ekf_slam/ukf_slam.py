@@ -674,7 +674,7 @@ class UKFSLAM(Node):
                 self.extract_curvature_points,
                 point_cluster,
                 5,          # k
-                0.2,        # curvature_threshold
+                0.185,        # curvature_threshold
                 0.5,        # range_min
                 10.0        # range_max
             )
