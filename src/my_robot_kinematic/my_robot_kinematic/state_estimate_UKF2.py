@@ -96,7 +96,7 @@ class state_estimate(Node):
         self.last_enc_msg = None
         self.enc_odom = np.zeros((3,1)) # dead reckoning from encoder
         self.enc_buffer = deque(maxlen=20)
-        self.enc_R = np.array([0.004, 0.004, 0.005, 0.001, 0.001])
+        self.enc_R = np.array([0.005, 0.005, 0.005, 0.001, 0.001])
         # imu
         self.create_subscription(Imu, self.imu_topic, self.imu_callback, qos)
         self.last_imu_msg =  None
