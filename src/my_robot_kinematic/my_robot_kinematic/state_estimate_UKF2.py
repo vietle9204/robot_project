@@ -67,7 +67,7 @@ class state_estimate(Node):
 
         # define state vector
         self.x_k = np.zeros((5, 1))   # [x, y, theta, v, w]
-        self.Q_k = np.diag([0.001, 0.001])
+        self.Q_k = np.diag([0.0005, 0.0005])
         self.P_k = np.eye(5) * 0.1
         #define measurement vector
         self.z = np.zeros((8,1))
@@ -297,8 +297,8 @@ class state_estimate(Node):
 
         # Predic
         Q = self.Q_k.copy()
-        Q[0,0] = Q[0,0] + 4.0*max(0.0, -2*1e-4 + (math.fabs(enc_v - self.x_k[3,0])**2)) + 10*max(0.0, -1*1e-4+ (math.fabs(enc_v  - self.last_enc_msg.twist.linear.x)**2))
-        Q[1,1] = Q[1,1] + 4.0*max(0.0, -10*1e-4 + (math.fabs(0.5*(enc_w + angular_vel_yaw) - self.x_k[4,0])**2)) + 10*max(0.0, -4*1e-3 + (math.fabs(0.5*(enc_w - self.last_enc_msg.twist.angular.z) + 0.5*(angular_vel_yaw - self.last_imu_msg.angular_velocity.z))**2))
+        Q[0,0] = Q[0,0] + 4.0*max(0.0, -4*1e-4 + (math.fabs(enc_v - self.x_k[3,0])**2)) + 10*max(0.0, -10*1e-4+ (math.fabs(enc_v  - self.last_enc_msg.twist.linear.x)**2))
+        Q[1,1] = Q[1,1] + 4.0*max(0.0, -10*1e-4 + (math.fabs(0.5*(enc_w + angular_vel_yaw) - self.x_k[4,0])**2)) + 10*max(0.0, -5*1e-3 + (math.fabs(0.5*(enc_w - self.last_enc_msg.twist.angular.z) + 0.5*(angular_vel_yaw - self.last_imu_msg.angular_velocity.z))**2))
 
         predict_dt = t_min - self.odom_time
         self.UKF_prediction(predict_dt, Q)
@@ -342,8 +342,8 @@ class state_estimate(Node):
         ))
         self.get_logger().info("enc_buffer length: {}, imu_buffer length: {}, mag_buffer length: {}".format(len(self.enc_buffer)+enc_flag, len(self.imu_buffer)+imu_flag, len(self.mag_buffer)+mag_flag))
 
-        # if(self.enc_buffer or self.imu_buffer):
-        #     self.ST_process()
+        if(self.enc_buffer or self.imu_buffer):
+            self.ST_process()
 
     def generate_sigma_points(self, x, P, Q):
         x_aug = np.zeros((self.L, 1))
