@@ -54,7 +54,7 @@ class state_estimate(Node):
         self.L = self.n_x + self.n_w
 
         # define sigma point parameter
-        self.alpha = 0.3
+        self.alpha = 0.5
         self.beta = 2
         self.kappa = 0
         self.lam = self.alpha**2 * (self.L + self.kappa) - self.L
@@ -67,7 +67,7 @@ class state_estimate(Node):
 
         # define state vector
         self.x_k = np.zeros((5, 1))   # [x, y, theta, v, w]
-        self.Q_k = np.diag([0.005, 0.005])
+        self.Q_k = np.diag([0.0005, 0.0005])
         self.P_k = np.eye(5) * 0.1
         #define measurement vector
         self.z = np.zeros((8,1))
@@ -96,7 +96,7 @@ class state_estimate(Node):
         self.last_enc_msg = None
         self.enc_odom = np.zeros((3,1)) # dead reckoning from encoder
         self.enc_buffer = deque(maxlen=20)
-        self.enc_R = np.array([0.005, 0.005, 0.005, 0.001, 0.001])
+        self.enc_R = np.array([0.004, 0.004, 0.005, 0.001, 0.001])
         # imu
         self.create_subscription(Imu, self.imu_topic, self.imu_callback, qos)
         self.last_imu_msg =  None
@@ -317,20 +317,20 @@ class state_estimate(Node):
         self.z[7,0] = mag_yaw 
 
         imu_R = self.imu_R.copy()
-        imu_R[0] = imu_R[0] + (0.005*math.fabs(self.imu_theta))**2
+        imu_R[0] = imu_R[0] + (0.02*math.fabs(self.imu_theta))**2
         if imu_flag:
-            imu_R[0] = imu_R[0] + 0.00005
+            imu_R[0] = imu_R[0] + 0.0001
         enc_R = self.enc_R.copy()
-        enc_R[0] = enc_R[0] + (0.000025*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
-        enc_R[1] = enc_R[1] + (0.000025*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
-        enc_R[2] = enc_R[2] + (0.005*math.fabs(self.enc_odom[2,0]))**2
+        enc_R[0] = enc_R[0] + (0.0001*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
+        enc_R[1] = enc_R[1] + (0.0001*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
+        enc_R[2] = enc_R[2] + (0.01*math.fabs(self.enc_odom[2,0]))**2
         if enc_flag:
-            enc_R[0] = enc_R[0] + 0.00005
-            enc_R[1] = enc_R[1] + 0.00005
-            enc_R[2] = enc_R[2] + 0.00005
+            enc_R[0] = enc_R[0] + 0.0001
+            enc_R[1] = enc_R[1] + 0.0001
+            enc_R[2] = enc_R[2] + 0.0001
         mag_R = self.mag_R.copy()
         if mag_flag:
-            mag_R[0] = mag_R[0] + 0.00001
+            mag_R[0] = mag_R[0] + 0.0001
         R = np.diag([imu_R[0], imu_R[1], enc_R[0], enc_R[1], enc_R[2], self.enc_R[3], self.enc_R[4], mag_R[0]])
                 
         self.UKF_update(self.z, self.H, R, (0,4,7))
