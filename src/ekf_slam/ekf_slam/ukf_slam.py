@@ -241,7 +241,7 @@ class UKFSLAM(Node):
         dx_robot =  math.cos(self.last_odom[2]) * dx + math.sin(self.last_odom[2]) * dy
         dy_robot = -math.sin(self.last_odom[2]) * dx + math.cos(self.last_odom[2]) * dy
 
-        if abs(dx_robot) < 0.001 and abs(dy_robot) < 0.001 and abs(dtheta) < 0.001:
+        if abs(dx_robot) < 0.005 and abs(dy_robot) < 0.005 and abs(dtheta) < 0.005:
             dx_robot, dy_robot, dtheta = 1e-15, 1e-15, 1e-15
         
         # Q_incremental: 
@@ -412,6 +412,22 @@ class UKFSLAM(Node):
     def predict(self, delta_x, Q):
         dx, dy, dtheta = delta_x
         n = self.x.shape[0]              # 3+2n
+        # Thêm nhiễu Q vào P trước khi tạo sigma points 
+        # Lấy góc hiện tại của robot trong Map
+        theta = self.x[2, 0]
+        cos_t = math.cos(theta)
+        sin_t = math.sin(theta)
+        # Ma trận quay R (3x3 cho x, y, theta)
+        R = np.array([
+            [cos_t, -sin_t, 0],
+            [sin_t,  cos_t, 0],
+            [0,      0,     1]
+        ])
+        # Xoay Q từ Robot Frame sang Global Frame
+        Q_global = R @ Q @ R.T
+        # Sau đó mới gán vào Q_model lớn
+        Q_model = np.zeros((n, n))
+        Q_model[:3, :3] = Q_global
 
         # generate sigma points
         w_m, w_c, sigma_points = self.generate_sigma_points(self.x, self.P)
@@ -435,23 +451,6 @@ class UKFSLAM(Node):
         self.x[2, 0] = math.atan2(sin_sum, cos_sum)
     
         # Tính Covariance mới (Weighted covariance)
-        # Thêm nhiễu Q vào P trước khi tạo sigma points 
-        # Lấy góc hiện tại của robot trong Map
-        theta = self.x[2, 0]
-        cos_t = math.cos(theta)
-        sin_t = math.sin(theta)
-        # Ma trận quay R (3x3 cho x, y, theta)
-        R = np.array([
-            [cos_t, -sin_t, 0],
-            [sin_t,  cos_t, 0],
-            [0,      0,     1]
-        ])
-        # Xoay Q từ Robot Frame sang Global Frame
-        Q_global = R @ Q @ R.T
-        # Sau đó mới gán vào Q_model lớn
-        Q_model = np.zeros((n, n))
-        Q_model[:3, :3] = Q_global
-
         # P_new = np.zeros_like(self.P)
         diff = sigmas_f - self.x.T 
         diff[:, 2] = (diff[:, 2] + np.pi) % (2 * np.pi) - np.pi
