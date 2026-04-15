@@ -29,7 +29,7 @@ def normalize_angle_vec(a):
     return (a + np.pi) % (2*np.pi) - np.pi
 
 class state_estimate(Node):
-    def __init__(self):
+    def __init__(self):    
         super().__init__('odom_node')
         # Parameters
         self.parameters()
@@ -96,7 +96,7 @@ class state_estimate(Node):
         self.last_enc_msg = None
         self.enc_odom = np.zeros((3,1)) # dead reckoning from encoder
         self.enc_buffer = deque(maxlen=20)
-        self.enc_R = np.array([0.004, 0.004, 0.005, 0.002, 0.002])
+        self.enc_R = np.array([0.04, 0.04, 0.005, 0.002, 0.002])
         # imu
         self.create_subscription(Imu, self.imu_topic, self.imu_callback, qos)
         self.last_imu_msg =  None
@@ -323,8 +323,8 @@ class state_estimate(Node):
         if imu_flag:
             imu_R[0] = imu_R[0] + 0.0001
         enc_R = self.enc_R.copy()
-        enc_R[0] = enc_R[0] + (0.0001*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
-        enc_R[1] = enc_R[1] + (0.0001*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
+        enc_R[0] = enc_R[0] + (0.0004*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
+        enc_R[1] = enc_R[1] + (0.0004*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
         enc_R[2] = enc_R[2] + (0.01*math.fabs(self.enc_odom[2,0]))**2
         if enc_flag:
             enc_R[0] = enc_R[0] + 0.0001
