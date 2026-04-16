@@ -241,15 +241,15 @@ class UKFSLAM(Node):
         dx_robot =  math.cos(self.last_odom[2]) * dx + math.sin(self.last_odom[2]) * dy
         dy_robot = -math.sin(self.last_odom[2]) * dx + math.cos(self.last_odom[2]) * dy
 
-        if abs(dx_robot) < 0.005 and abs(dy_robot) < 0.005 and abs(dtheta) < 0.005:
+        if abs(dx_robot) < 0.002 and abs(dy_robot) < 0.002 and abs(dtheta) < 0.002:
             dx_robot, dy_robot, dtheta = 1e-15, 1e-15, 1e-15
         
         # Q_incremental: 
         dist = math.sqrt(dx_robot**2 + dy_robot**2)
         Q_robot = np.diag([
-            0.01 * dist + 1e-12,        # Nhiễu x
-            0.01 * dist + 1e-12,        # Nhiễu y
-            0.01 * math.fabs(dtheta**2) + 1e-12   # Nhiễu theta
+            0.0049 * dist + 1e-12,        # Nhiễu x
+            0.0049 * dist + 1e-12,        # Nhiễu y
+            0.0049 * math.fabs(dtheta**2) + 1e-12   # Nhiễu theta
         ])
  
         self.predict((dx_robot, dy_robot, dtheta), Q_robot)
