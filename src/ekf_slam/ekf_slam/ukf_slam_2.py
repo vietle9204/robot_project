@@ -77,7 +77,7 @@ class UKFSLAM(Node):
         self.new_features = []
 
         #UKF
-        self.alpha, self.kappa, self.beta = 0.05, 0.0, 2.0
+        self.alpha, self.kappa, self.beta = 0.01, 0.0, 2.0
 
         #time parameter
         self.last_odom = None      #[x, y, theta]
@@ -250,9 +250,9 @@ class UKFSLAM(Node):
         # Q_incremental: 
         dist = math.sqrt(dx_robot**2 + dy_robot**2)
         Q_robot = np.diag([
-            0.005 * dist + 1e-12,        # Nhiễu x
-            0.005 * dist + 1e-12,        # Nhiễu y
-            0.005* math.fabs(dtheta**2) + 1e-12  # Nhiễu theta
+            0.0081 * dist + 1e-12,        # Nhiễu x
+            0.0081 * dist + 1e-12,        # Nhiễu y
+            0.0081* math.fabs(dtheta**2) + 1e-12  # Nhiễu theta
         ])
 
         # # Thực hiện phép biến đổi (Propagation)
@@ -370,7 +370,7 @@ class UKFSLAM(Node):
         n = x.shape[0]
 
         # generate sigma points
-        w_m, w_c, sigma_points = self.generate_sigma_points(x, P, 0.1)
+        w_m, w_c, sigma_points = self.generate_sigma_points(x, P, 0.05)
         # -----------Dự báo từng Sigma Point qua Motion Model---------
         sigmas_f = np.copy(sigma_points) 
         pts = sigma_points[:, 2] 
@@ -436,7 +436,7 @@ class UKFSLAM(Node):
         n = x.shape[0]
 
         # generate sigma points
-        w_m, w_c, sigma_points = self.generate_sigma_points(x, P, 1.0)
+        w_m, w_c, sigma_points = self.generate_sigma_points(x, P, 0.05)
         # -----------Dự báo từng Sigma Point qua Motion Model---------
         Z_sigmas = np.zeros((2*n + 1, 2))   
         z_pred = np.zeros((2, 1))
@@ -954,7 +954,7 @@ class UKFSLAM(Node):
     # =========================
     # 5. DATA ASSOCIATION
     # =========================
-    def association(self, features, Z_pred_full, S_full, chi2_threshold=0.55):
+    def association(self, features, Z_pred_full, S_full, chi2_threshold=5.99):
         """
         features: list of (z_obs, R_obs) từ extract_features_from_scan
         Z_pred_full: Vector (2*M,) dự báo [r1, b1, r2, b2...]
