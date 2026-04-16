@@ -327,13 +327,13 @@ class state_estimate(Node):
         self.z[7,0] = mag_yaw 
 
         imu_R = self.imu_R.copy()
-        imu_R[0] = imu_R[0] + (0.05*math.fabs(self.imu_theta))**2
+        imu_R[0] = imu_R[0] + (0.03*math.fabs(self.imu_theta))**2
         if imu_flag:
             imu_R[0] = imu_R[0] + 0.0001
         enc_R = self.enc_R.copy()
-        enc_R[0] = enc_R[0] + (0.0016*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
-        enc_R[1] = enc_R[1] + (0.0016*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
-        enc_R[2] = enc_R[2] + (0.04*math.fabs(self.enc_odom[2,0]))**2
+        enc_R[0] = enc_R[0] + (0.001*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
+        enc_R[1] = enc_R[1] + (0.001*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
+        enc_R[2] = enc_R[2] + (0.03*math.fabs(self.enc_odom[2,0]))**2
         if enc_flag:
             enc_R[0] = enc_R[0] + 0.0001
             enc_R[1] = enc_R[1] + 0.0001
