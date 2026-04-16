@@ -96,13 +96,13 @@ class state_estimate(Node):
         self.last_enc_msg = None
         self.enc_odom = np.zeros((3,1)) # dead reckoning from encoder
         self.enc_buffer = deque(maxlen=20)
-        self.enc_R = np.array([0.1, 0.1, 0.1, 0.0025, 0.0025])
+        self.enc_R = np.array([0.05, 0.05, 0.05, 0.0025, 0.0025])
         # imu
         self.create_subscription(Imu, self.imu_topic, self.imu_callback, qos)
         self.last_imu_msg =  None
         self.imu_theta = 0.0
         self.imu_buffer = deque(maxlen=20)
-        self.imu_R = np.array([0.1, 0.0049]) 
+        self.imu_R = np.array([0.07, 0.0049]) 
         # mag
         self.create_subscription(MagneticField, 'robot1/mag/data', self.mag_filt_cb, qos)
         self.last_mag_msg = None
@@ -327,13 +327,13 @@ class state_estimate(Node):
         self.z[7,0] = mag_yaw 
 
         imu_R = self.imu_R.copy()
-        imu_R[0] = imu_R[0] + (0.03*math.fabs(self.imu_theta))**2
+        imu_R[0] = imu_R[0] + (0.025*math.fabs(self.imu_theta))**2
         if imu_flag:
             imu_R[0] = imu_R[0] + 0.0001
         enc_R = self.enc_R.copy()
-        enc_R[0] = enc_R[0] + (0.001*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
-        enc_R[1] = enc_R[1] + (0.001*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
-        enc_R[2] = enc_R[2] + (0.03*math.fabs(self.enc_odom[2,0]))**2
+        enc_R[0] = enc_R[0] + (0.0004*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
+        enc_R[1] = enc_R[1] + (0.0004*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
+        enc_R[2] = enc_R[2] + (0.02*math.fabs(self.enc_odom[2,0]))**2
         if enc_flag:
             enc_R[0] = enc_R[0] + 0.0001
             enc_R[1] = enc_R[1] + 0.0001
