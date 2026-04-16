@@ -54,7 +54,7 @@ class state_estimate(Node):
         self.L = self.n_x + self.n_w
 
         # define sigma point parameter
-        self.alpha = 0.5
+        self.alpha = 0.1
         self.beta = 2
         self.kappa = 0
         self.lam = self.alpha**2 * (self.L + self.kappa) - self.L
@@ -96,7 +96,7 @@ class state_estimate(Node):
         self.last_enc_msg = None
         self.enc_odom = np.zeros((3,1)) # dead reckoning from encoder
         self.enc_buffer = deque(maxlen=20)
-        self.enc_R = np.array([0.01, 0.01, 0.01, 0.004, 0.004])
+        self.enc_R = np.array([0.01, 0.01, 0.01, 0.0025, 0.0025])
         # imu
         self.create_subscription(Imu, self.imu_topic, self.imu_callback, qos)
         self.last_imu_msg =  None
