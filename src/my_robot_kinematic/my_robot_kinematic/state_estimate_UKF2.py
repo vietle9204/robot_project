@@ -54,7 +54,7 @@ class state_estimate(Node):
         self.L = self.n_x + self.n_w
 
         # define sigma point parameter
-        self.alpha = 0.1
+        self.alpha = 0.5
         self.beta = 2
         self.kappa = 0
         self.lam = self.alpha**2 * (self.L + self.kappa) - self.L
@@ -96,13 +96,13 @@ class state_estimate(Node):
         self.last_enc_msg = None
         self.enc_odom = np.zeros((3,1)) # dead reckoning from encoder
         self.enc_buffer = deque(maxlen=20)
-        self.enc_R = np.array([0.05, 0.05, 0.05, 0.0025, 0.0025])
+        self.enc_R = np.array([0.01, 0.01, 0.01, 0.004, 0.004])
         # imu
         self.create_subscription(Imu, self.imu_topic, self.imu_callback, qos)
         self.last_imu_msg =  None
         self.imu_theta = 0.0
         self.imu_buffer = deque(maxlen=20)
-        self.imu_R = np.array([0.07, 0.0049]) 
+        self.imu_R = np.array([0.036, 0.0049]) 
         # mag
         self.create_subscription(MagneticField, 'robot1/mag/data', self.mag_filt_cb, qos)
         self.last_mag_msg = None
@@ -110,7 +110,7 @@ class state_estimate(Node):
         self.mag_yaw = None
         self.mag_slope = 0.0
         self.mag_buffer = deque(maxlen=20)
-        self.mag_R = np.array([0.0036])
+        self.mag_R = np.array([0.005])
         # publish odommetry
         self.odom_pub = self.create_publisher(Odometry, self.odometry_topic, qos2)
 
@@ -211,9 +211,7 @@ class state_estimate(Node):
             imu_dt = t_imu - imu_last_time
 
             angular_vel_yaw = float(imu_msg.angular_velocity.z)
-            # angular_vel_yaw =  angular_vel_yaw #- 0.004
-            # if math.fabs(angular_vel_yaw) < 0.04:
-            #     angular_vel_yaw = 0.0
+            angular_vel_yaw =  angular_vel_yaw #- 0.004
             self.imu_theta += angular_vel_yaw*imu_dt
             imu_theta = angle_normalize(self.imu_theta)
 
@@ -313,12 +311,6 @@ class state_estimate(Node):
         
         # update
 
-        # if math.fabs(angular_vel_yaw) < 0.03:
-        #         angular_vel_yaw = 0.0
-        # if math.fabs(enc_w) < 0.02:
-        #         enc_w = 0.0
-        # if math.fabs(enc_v) < 0.02:
-        #         enc_v = 0.0
         self.z[0,0] = imu_theta
         self.z[1,0] = angular_vel_yaw
         self.z[2:5,0] = enc_odom[:3,0]
@@ -327,13 +319,13 @@ class state_estimate(Node):
         self.z[7,0] = mag_yaw 
 
         imu_R = self.imu_R.copy()
-        imu_R[0] = imu_R[0] + (0.025*math.fabs(self.imu_theta))**2
+        imu_R[0] = imu_R[0] + (0.02*math.fabs(self.imu_theta))**2
         if imu_flag:
             imu_R[0] = imu_R[0] + 0.0001
         enc_R = self.enc_R.copy()
         enc_R[0] = enc_R[0] + (0.0004*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
         enc_R[1] = enc_R[1] + (0.0004*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
-        enc_R[2] = enc_R[2] + (0.02*math.fabs(self.enc_odom[2,0]))**2
+        enc_R[2] = enc_R[2] + (0.01*math.fabs(self.enc_odom[2,0]))**2
         if enc_flag:
             enc_R[0] = enc_R[0] + 0.0001
             enc_R[1] = enc_R[1] + 0.0001
@@ -347,10 +339,10 @@ class state_estimate(Node):
     
         ros_stamp = Time(seconds=self.odom_time).to_msg()
         self.publish_odom(ros_stamp)
-        # self.get_logger().info("Odom published: x,y,theta = {:.4f}, {:.4f}, {:.4f}".format(
-        #     self.x_k[0,0], self.x_k[1,0], self.x_k[2,0]
-        # ))
-        # self.get_logger().info("enc_buffer length: {}, imu_buffer length: {}, mag_buffer length: {}".format(len(self.enc_buffer)+enc_flag, len(self.imu_buffer)+imu_flag, len(self.mag_buffer)+mag_flag))
+        self.get_logger().info("Odom published: x,y,theta = {:.4f}, {:.4f}, {:.4f}".format(
+            self.x_k[0,0], self.x_k[1,0], self.x_k[2,0]
+        ))
+        self.get_logger().info("enc_buffer length: {}, imu_buffer length: {}, mag_buffer length: {}".format(len(self.enc_buffer)+enc_flag, len(self.imu_buffer)+imu_flag, len(self.mag_buffer)+mag_flag))
 
         # if(self.enc_buffer or self.imu_buffer):
         #     self.ST_process()
