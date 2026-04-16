@@ -96,13 +96,13 @@ class state_estimate(Node):
         self.last_enc_msg = None
         self.enc_odom = np.zeros((3,1)) # dead reckoning from encoder
         self.enc_buffer = deque(maxlen=20)
-        self.enc_R = np.array([0.01, 0.01, 0.01, 0.0025, 0.0025])
+        self.enc_R = np.array([0.1, 0.1, 0.1, 0.0025, 0.0025])
         # imu
         self.create_subscription(Imu, self.imu_topic, self.imu_callback, qos)
         self.last_imu_msg =  None
         self.imu_theta = 0.0
         self.imu_buffer = deque(maxlen=20)
-        self.imu_R = np.array([0.036, 0.0049]) 
+        self.imu_R = np.array([0.1, 0.0049]) 
         # mag
         self.create_subscription(MagneticField, 'robot1/mag/data', self.mag_filt_cb, qos)
         self.last_mag_msg = None
@@ -110,7 +110,7 @@ class state_estimate(Node):
         self.mag_yaw = None
         self.mag_slope = 0.0
         self.mag_buffer = deque(maxlen=20)
-        self.mag_R = np.array([0.005])
+        self.mag_R = np.array([0.0036])
         # publish odommetry
         self.odom_pub = self.create_publisher(Odometry, self.odometry_topic, qos2)
 
@@ -347,10 +347,10 @@ class state_estimate(Node):
     
         ros_stamp = Time(seconds=self.odom_time).to_msg()
         self.publish_odom(ros_stamp)
-        self.get_logger().info("Odom published: x,y,theta = {:.4f}, {:.4f}, {:.4f}".format(
-            self.x_k[0,0], self.x_k[1,0], self.x_k[2,0]
-        ))
-        self.get_logger().info("enc_buffer length: {}, imu_buffer length: {}, mag_buffer length: {}".format(len(self.enc_buffer)+enc_flag, len(self.imu_buffer)+imu_flag, len(self.mag_buffer)+mag_flag))
+        # self.get_logger().info("Odom published: x,y,theta = {:.4f}, {:.4f}, {:.4f}".format(
+        #     self.x_k[0,0], self.x_k[1,0], self.x_k[2,0]
+        # ))
+        # self.get_logger().info("enc_buffer length: {}, imu_buffer length: {}, mag_buffer length: {}".format(len(self.enc_buffer)+enc_flag, len(self.imu_buffer)+imu_flag, len(self.mag_buffer)+mag_flag))
 
         # if(self.enc_buffer or self.imu_buffer):
         #     self.ST_process()
