@@ -77,7 +77,7 @@ class UKFSLAM(Node):
         self.new_features = []
 
         #UKF
-        self.alpha, self.kappa, self.beta = 0.01, 0.0, 2.0
+        self.alpha, self.kappa, self.beta = 0.05, 0.0, 2.0
 
         self.w_m, self.w_c, self.sigma = None, None, None
 
@@ -247,9 +247,9 @@ class UKFSLAM(Node):
         # Q_incremental: 
         dist = math.sqrt(dx_robot**2 + dy_robot**2)
         Q_robot = np.diag([
-            0.0025 * dist + 1e-12,        # Nhiễu x
-            0.0025 * dist + 1e-12,        # Nhiễu y
-            0.0025 * math.fabs(dtheta**2) + 1e-12   # Nhiễu theta
+            0.01 * dist + 1e-12,        # Nhiễu x
+            0.01 * dist + 1e-12,        # Nhiễu y
+            0.01 * math.fabs(dtheta**2) + 1e-12   # Nhiễu theta
         ])
  
         self.predict((dx_robot, dy_robot, dtheta), Q_robot)
