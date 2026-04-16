@@ -313,11 +313,11 @@ class state_estimate(Node):
         
         # update
 
-        if math.fabs(angular_vel_yaw) < 0.04:
+        if math.fabs(angular_vel_yaw) < 0.03:
                 angular_vel_yaw = 0.0
-        if math.fabs(enc_w) < 0.03:
+        if math.fabs(enc_w) < 0.02:
                 enc_w = 0.0
-        if math.fabs(enc_v) < 0.03:
+        if math.fabs(enc_v) < 0.02:
                 enc_v = 0.0
         self.z[0,0] = imu_theta
         self.z[1,0] = angular_vel_yaw
