@@ -77,7 +77,7 @@ class UKFSLAM(Node):
         self.new_features = []
 
         #UKF
-        self.alpha, self.kappa, self.beta = 0.01, 0.0, 2.0
+        self.alpha, self.kappa, self.beta = 0.05, 0.0, 2.0
 
         #time parameter
         self.last_odom = None      #[x, y, theta]
