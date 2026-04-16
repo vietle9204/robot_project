@@ -247,9 +247,9 @@ class UKFSLAM(Node):
         # Q_incremental: 
         dist = math.sqrt(dx_robot**2 + dy_robot**2)
         Q_robot = np.diag([
-            0.0049 * dist + 1e-12,        # Nhiễu x
-            0.0049 * dist + 1e-12,        # Nhiễu y
-            0.0049 * math.fabs(dtheta**2) + 1e-12   # Nhiễu theta
+            0.0025 * dist + 1e-12,        # Nhiễu x
+            0.0025 * dist + 1e-12,        # Nhiễu y
+            0.0025 * math.fabs(dtheta**2) + 1e-12   # Nhiễu theta
         ])
  
         self.predict((dx_robot, dy_robot, dtheta), Q_robot)
