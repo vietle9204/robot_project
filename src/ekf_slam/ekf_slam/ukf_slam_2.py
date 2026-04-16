@@ -12,6 +12,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 from scipy.linalg import cholesky
 from scipy.linalg import block_diag
 from message_filters import Subscriber, ApproximateTimeSynchronizer
+from concurrent.futures import ThreadPoolExecutor
 
 qos = QoSProfile(
     reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -63,7 +64,7 @@ class UKFSLAM(Node):
         self.P = np.eye(3) * 1e-3
         # Noise
         self.Q = np.eye(3) * 1e-3  # motion noise
-        self.R = np.diag([0.02, 0.025])        # measurement noise
+        self.R = np.diag([0.0025, 0.0036])        # measurement noise
         # lamarks
         self.num_landmarks = 0
         self.max_landmarks =150     # giới hạn số landmark
@@ -85,6 +86,8 @@ class UKFSLAM(Node):
         self.last_vel_cov = None         #2x2
         self.last_predict_time = None       #last predict
 
+        self.scan_thread = ThreadPoolExecutor(max_workers=4)
+        self.extract_thread = ThreadPoolExecutor(max_workers=4)
         #Ros 2 init
         self.ros_init()
 
@@ -247,9 +250,9 @@ class UKFSLAM(Node):
         # Q_incremental: 
         dist = math.sqrt(dx_robot**2 + dy_robot**2)
         Q_robot = np.diag([
-            0.05 * dist + 1e-12,        # Nhiễu x
-            0.05 * dist + 1e-12,        # Nhiễu y
-            0.05* math.fabs(dtheta**2) + 1e-12  # Nhiễu theta
+            0.005 * dist + 1e-12,        # Nhiễu x
+            0.005 * dist + 1e-12,        # Nhiễu y
+            0.005* math.fabs(dtheta**2) + 1e-12  # Nhiễu theta
         ])
 
         # # Thực hiện phép biến đổi (Propagation)
@@ -367,7 +370,7 @@ class UKFSLAM(Node):
         n = x.shape[0]
 
         # generate sigma points
-        w_m, w_c, sigma_points = self.generate_sigma_points(x, P, 1.0)
+        w_m, w_c, sigma_points = self.generate_sigma_points(x, P, 0.1)
         # -----------Dự báo từng Sigma Point qua Motion Model---------
         sigmas_f = np.copy(sigma_points) 
         pts = sigma_points[:, 2] 
@@ -433,7 +436,7 @@ class UKFSLAM(Node):
         n = x.shape[0]
 
         # generate sigma points
-        w_m, w_c, sigma_points = self.generate_sigma_points(x, P, 100.0)
+        w_m, w_c, sigma_points = self.generate_sigma_points(x, P, 1.0)
         # -----------Dự báo từng Sigma Point qua Motion Model---------
         Z_sigmas = np.zeros((2*n + 1, 2))   
         z_pred = np.zeros((2, 1))
@@ -543,7 +546,7 @@ class UKFSLAM(Node):
         self.P = 0.5 * (self.P + self.P.T)
             
 
-    # =========================
+     # =========================
     #3. ADD NEW LANDMARK
     # =========================
     def add_landmark(self, z_feat):
@@ -649,25 +652,55 @@ class UKFSLAM(Node):
         xs = ranges * np.cos(angles)
         ys = ranges * np.sin(angles)
 
-        point_cloud = np.column_stack((xs, ys, ranges, angles, valid_indices))
+        xs = ranges * np.cos(angles)
+        ys = ranges * np.sin(angles)
+
+        point_cloud = np.empty((len(xs), 5))
+        point_cloud[:,0] = xs
+        point_cloud[:,1] = ys
+        point_cloud[:,2] = ranges
+        point_cloud[:,3] = angles
+        point_cloud[:,4] = valid_indices
 
         segment_clusters = self.segment_scan(point_cloud, 0.3, 3)
 
         # 2. Chạy trích xuất đặc trưng cho TỪNG cụm
-        curv_pts = []
-        for point_cluster in segment_clusters:
-            # point_cluster là mảng (N, 5) chứa [x, y, r, b, id]
-            
-            features = self.extract_curvature_points(
+        # clusters = []
+        # for point_cluster in segment_clusters:
+        #     features = self.extract_curvature_points(
+        #         point_cluster,
+        #         k=5, 
+        #         curvature_threshold=0.2,
+        #         range_min=0.5,
+        #         range_max=10.0
+        #     )
+
+        #     if len(features) > 0:
+        #         clusters.append(features)
+
+        clusters = []
+        futures = [
+            self.extract_thread.submit(
+                self.extract_curvature_points,
                 point_cluster,
-                k=5, 
-                curvature_threshold=0.185,
-                range_min=0.5,
-                range_max=10.0
+                5,          # k
+                0.185,        # curvature_threshold
+                0.5,        # range_min
+                10.0        # range_max
             )
-            
-            if len(features) > 0:
-                curv_pts.extend(features)
+            for point_cluster in segment_clusters
+        ]
+
+        # lấy kết quả
+        for future in futures:
+            features = future.result()
+            if features is not None and len(features) > 0:
+                clusters.append(features)
+
+        if len(clusters) == 0:
+            return []
+
+        curv_pts = np.vstack(clusters)
 
         if len(curv_pts) < 1:
             return []
@@ -681,42 +714,36 @@ class UKFSLAM(Node):
 
     def segment_scan(self, point_cloud, threshold=0.2, min_points=3):
         """
-        points_cloud: np.array shape (N, 5) chứa [x, y, r, b, id]
+        Tối ưu hóa bằng cách tìm tất cả điểm ngắt cùng lúc.
         """
-        if len(point_cloud) < 2: return []
+        if len(point_cloud) < min_points:
+            return []
 
-        # Tính khoảng cách Euclidean từ cột x (0) và y (1)
+        # 1. Tính toán khoảng cách bình phương giữa các điểm liên tiếp (Vectorized)
         diffs = np.diff(point_cloud[:, :2], axis=0)
         dist_sq_array = np.sum(diffs**2, axis=1)
         
-        thresh_sq = threshold**2
-        clusters = []
-        current_cluster = [point_cloud[0]]
-
-        for i in range(len(dist_sq_array)):
-            # Kiểm tra thêm: Nếu index nhảy bậc quá xa, ta chủ động tách cụm
-            idx_diff = point_cloud[i+1, 4] - point_cloud[i, 4]
-            
-            if dist_sq_array[i] < thresh_sq and idx_diff < 5: # 5 là ngưỡng nhảy index tùy chọn
-                current_cluster.append(point_cloud[i+1])
-            else:
-                if len(current_cluster) >= min_points:
-                    clusters.append(np.array(current_cluster))
-                current_cluster = [point_cloud[i+1]]
+        # 2. Tính toán độ nhảy index giữa các điểm liên tiếp
+        idx_diff = np.diff(point_cloud[:, 4])
         
-        # Cụm cuối
-        if len(current_cluster) >= min_points:
-            clusters.append(np.array(current_cluster))
-
-        # 3. Xử lý khép vòng 360 độ
+        # 3. Tìm các vị trí "ngắt" (vượt ngưỡng khoảng cách HOẶC nhảy index quá xa)
+        break_indices = np.where((dist_sq_array > threshold**2) | (idx_diff > 5))[0] + 1
+        
+        # 4. Chia mảng thành các cụm bằng np.split
+        clusters = np.split(point_cloud, break_indices)
+        
+        # 5. Lọc các cụm không đủ số lượng điểm (List comprehension nhanh hơn loop append)
+        clusters = [c for c in clusters if len(c) >= min_points]
+        
+        # 6. Xử lý khép vòng 360 độ (Wrap-around)
         if len(clusters) > 1:
-            first_pt = clusters[0][0]   
-            last_pt = clusters[-1][-1]   
-            dist_wrap_sq = np.sum((first_pt[:2] - last_pt[:2])**2)
-            if dist_wrap_sq < thresh_sq:
+            first_pt = clusters[0][0, :2]
+            last_pt = clusters[-1][-1, :2]
+            if np.sum((first_pt - last_pt)**2) < threshold**2:
+                # Gộp cụm cuối vào đầu và xóa cụm cuối
                 clusters[0] = np.vstack((clusters[-1], clusters[0]))
                 clusters.pop()
-
+                
         return clusters
     
 
@@ -732,37 +759,45 @@ class UKFSLAM(Node):
         if n < 2 * k + 1:
             return []
 
-        # 1. Tính toán độ cong cho vùng trung tâm (từ k đến n-k-1)
-        curv_indices = []
-        for i in range(k, n - k):
-            if point_cluster[i, 2] < range_min or point_cluster[i, 2] > range_max:
-                continue
+        # # 1. Tính toán độ cong cho vùng trung tâm (từ k đến n-k-1)
+        # curv_indices = []
+        # for i in range(k, n - k):
+        #     if point_cluster[i, 2] < range_min or point_cluster[i, 2] > range_max:
+        #         continue
                 
-            neighbors = point_cluster[i-k : i+k+1, 0:2]
-            curv = self.compute_curvature(neighbors)
-            if curv > curvature_threshold:
-                curv_indices.append(i)
+        #     # neighbors = point_cluster[i-k : i+k+1, 0:2]
+        #     curv = self.compute_curvature(point_cluster[i-k : i+k+1, 0:2])
+        #     if curv > curvature_threshold:
+        #         curv_indices.append(i)
 
-        if not curv_indices:
-            return []
+        # if not curv_indices:
+        #     return []
 
-        # 2. Xây dựng danh sách kết quả (Sử dụng slicing để tránh duplicate)
-        first_curv = curv_indices[0]
-        last_curv = curv_indices[-1]
+        # # 2. Xây dựng danh sách kết quả (Sử dụng slicing để tránh duplicate)
+        # first_curv = curv_indices[0]
+        # last_curv = curv_indices[-1]
         
-        final_results = []
-        # Phần bù đầu
-        if first_curv == k:
-            final_results.extend(point_cluster[0:k])
+        # final_results = []
+        # # Phần bù đầu
+        # if first_curv == k:
+        #     final_results.extend(point_cluster[0:k])
             
-        # Phần thân (các điểm thực sự vượt ngưỡng)
-        final_results.extend(point_cluster[curv_indices])
+        # # Phần thân (các điểm thực sự vượt ngưỡng)
+        # final_results.extend(point_cluster[curv_indices])
             
-        # Phần bù cuối
-        if last_curv == n - k - 1:
-            final_results.extend(point_cluster[n-k : n])
+        # # Phần bù cuối
+        # if last_curv == n - k - 1:
+        #     final_results.extend(point_cluster[n-k : n])
 
-        return final_results
+        # return final_results
+
+        curv = self.fast_pca_curvature(point_cluster[:, :2], k)
+
+        # valid_pts = point_cluster[k:-k]
+
+        mask = (curv > curvature_threshold) & (point_cluster[:,2] > range_min) & (point_cluster[:,2] < range_max)
+
+        return point_cluster[mask]
     
     
     def compute_curvature(self, points):
@@ -790,9 +825,54 @@ class UKFSLAM(Node):
 
         return lambda_min / trace
 
+    def fast_pca_curvature(self, pts, k=5):
+        xs = pts[:,0]
+        ys = pts[:,1]
+
+        N = len(xs)
+        w = 2*k+1
+
+        # cumulative sums
+        cx = np.cumsum(np.insert(xs, 0, 0))
+        cy = np.cumsum(np.insert(ys, 0, 0))
+        cxx = np.cumsum(np.insert(xs*xs, 0, 0))
+        cyy = np.cumsum(np.insert(ys*ys, 0, 0))
+        cxy = np.cumsum(np.insert(xs*ys, 0, 0))
+
+        # sliding window sums
+        sum_x  = cx[w:]  - cx[:-w]
+        sum_y  = cy[w:]  - cy[:-w]
+        sum_xx = cxx[w:] - cxx[:-w]
+        sum_yy = cyy[w:] - cyy[:-w]
+        sum_xy = cxy[w:] - cxy[:-w]
+
+        # mean
+        mx = sum_x / w
+        my = sum_y / w
+
+        # covariance elements
+        var_x = sum_xx/w - mx*mx
+        var_y = sum_yy/w - my*my
+        cov_xy = sum_xy/w - mx*my
+
+        # trace & determinant
+        trace = var_x + var_y
+        det = var_x * var_y - cov_xy**2
+
+        # eigenvalue nhỏ (lambda_min)
+        discr = np.maximum(0, trace**2 - 4*det)
+        lambda_min = (trace - np.sqrt(discr)) / 2.0
+
+        # curvature
+        curvature = lambda_min / (trace + 1e-9)
+
+        curvature_full = np.pad(curvature, (k, k), mode='edge')
+
+        return curvature_full
+
 
     def cluster_features(self, points, angle_thresh=0.03):
-        if not points or len(points) == 0:
+        if len(points) == 0:
             return []
 
         # 1. Phân cụm thô theo góc
@@ -801,55 +881,38 @@ class UKFSLAM(Node):
 
         # 2. Lọc và làm sạch từng cụm
         for cl in angle_clusters:
-            cl_array = np.array(cl)
+            # cl_array = np.array(cl)
             # Tính khoảng cách trung bình của cụm (cột r là index 2)
-            mean_r = np.mean(cl_array[:, 2])
+            mean_r = np.mean(cl[:, 2])
             
             min_size = self.adaptive_min_cluster_size(mean_r)
             if len(cl) >= min_size:
                 # cl = self.filter_converged_points(cl_array, range_thresh=0.5)
-                final_clusters.append(cl_array)
+                final_clusters.append(cl)
 
         return final_clusters
     
 
     def cluster_by_angle(self, points, angle_thresh=0.03):
-        """Phân cụm dựa trên chênh lệch góc beta (index 3)"""
-        if not points: return []
-        
-        # Đảm bảo điểm được sắp xếp theo góc để duyệt tuyến tính
-        # points = sorted(points, key=lambda p: p[3])
-        
-        clusters = []
-        current_cluster = [points[0]]
+        if len(points) == 0:
+            return []
 
-        for i in range(1, len(points)):
-            # Tính delta beta (index 3)
-            db = abs(points[i][3] - points[i-1][3])
-            
-            # if db > np.pi:
-            #     db = abs(db - 2 * np.pi)
+        pts = np.array(points)
+        angles = pts[:, 3]
 
-            if db < angle_thresh:
-                current_cluster.append(points[i])
-            else:
-                clusters.append(current_cluster)
-                current_cluster = [points[i]]
+        # Tính delta góc vectorized
+        dtheta = np.abs(np.diff(angles))
 
-        clusters.append(current_cluster)
+        # Nếu có wrap-around (góc nhảy π → -π)
+        dtheta = np.minimum(dtheta, 2*np.pi - dtheta)
+
+        # Tìm điểm split
+        split_idx = np.where(dtheta > angle_thresh)[0] + 1
+
+        # Split mảng
+        clusters = np.split(pts, split_idx)
 
         return clusters
-    
-
-    def filter_converged_points(self, cluster, range_thresh=0.5):
-        if len(cluster) == 0: return cluster
-        
-        rs = cluster[:, 2]
-        r_mean = np.median(rs)
-
-        mask = np.abs(rs - r_mean) < range_thresh
-        return cluster[mask]
-
 
     def cluster_to_feature(self, cluster):
         """
@@ -868,7 +931,10 @@ class UKFSLAM(Node):
 
         # 2.(Covariance)
         if len(cluster) > 1:
-            z_cov_empirical = np.cov(cluster[:, 2:4].T)
+            data = cluster[:, 2:4]
+            mean = np.mean(data, axis=0)
+            centered = data - mean
+            z_cov_empirical = (centered.T @ centered) / (len(data) - 1)
         else:
             # Nếu chỉ có 1 điểm
             z_cov_empirical = np.zeros((2, 2))
@@ -888,7 +954,7 @@ class UKFSLAM(Node):
     # =========================
     # 5. DATA ASSOCIATION
     # =========================
-    def association(self, features, Z_pred_full, S_full, chi2_threshold=0.85):
+    def association(self, features, Z_pred_full, S_full, chi2_threshold=0.55):
         """
         features: list of (z_obs, R_obs) từ extract_features_from_scan
         Z_pred_full: Vector (2*M,) dự báo [r1, b1, r2, b2...]
@@ -905,36 +971,79 @@ class UKFSLAM(Node):
                 self.new_features.append((z_obs, R_obs))
             return
 
-        # 1. Trích xuất các khối đường chéo S cho từng Landmark
-        # S_diag_blocks[lm_id] = ma trận 2x2
-        S_diag_blocks = [
-            S_full[2*j : 2*j+2, 2*j : 2*j+2] for j in range(self.num_landmarks)
-        ]
+        # # 1. Trích xuất các khối đường chéo S cho từng Landmark
+        # # S_diag_blocks[lm_id] = ma trận 2x2
+        # # S_diag_blocks = [
+        # #     S_full[2*j : 2*j+2, 2*j : 2*j+2] for j in range(self.num_landmarks)
+        # # ]
 
-        # 2. Tính toán tất cả ứng viên tiềm năng (Mahalanobis)
-        pairs = []  # (d2, feat_id, lm_id)
+        # # 2. Tính toán tất cả ứng viên tiềm năng (Mahalanobis)
+        # pairs = []  # (d2, feat_id, lm_id)
+
+        # for i, (z_obs, R_obs) in enumerate(features):
+        #     # --- reshape ---
+        #     # z_obs = z_obs.reshape(1, 2)   # (1,2)
+        #     # Z_pred = Z_pred_full.reshape(-1, 2)   # (M,2)
+
+        #     # --- innovation ---
+        #     v = Z_pred_full.reshape(-1, 2) - z_obs   # (M,2)
+        #     v[:, 1] = (v[:, 1] + np.pi) % (2*np.pi) - np.pi
+
+        #     # gating thô
+        #     mask = (np.abs(v[:,0]) < 2.0) & (np.abs(v[:,1]) < np.pi/6)
+        #     valid_ids = np.where(mask)[0]
+
+        #     for lm_id in valid_ids:
+        #         S_total = S_full[2*lm_id:2*lm_id+2, 2*lm_id:2*lm_id+2] + R_obs
+        #         try:
+        #             d2 = v[lm_id].T @ np.linalg.solve(S_total, v[lm_id])
+        #             if d2 < chi2_threshold:
+        #                 pairs.append((d2, i, lm_id))
+        #         except np.linalg.LinAlgError:
+        #             continue
+
+        M = self.num_landmarks
+
+        # --- reshape trước (tránh làm lại nhiều lần) ---
+        Z_pred = Z_pred_full.reshape(M, 2)
+
+        # --- lấy block S 2x2 cho từng landmark ---
+        S_blocks = S_full.reshape(M, 2, M, 2).transpose(0,2,1,3)
+        S_blocks = S_blocks[np.arange(M), np.arange(M)]   # (M,2,2)
+
+        pairs = []
 
         for i, (z_obs, R_obs) in enumerate(features):
-            # --- reshape ---
-            # z_obs = z_obs.reshape(1, 2)   # (1,2)
-            # Z_pred = Z_pred_full.reshape(-1, 2)   # (M,2)
 
-            # --- innovation ---
-            v = Z_pred_full.reshape(-1, 2) - z_obs   # (M,2)
-            v[:, 1] = (v[:, 1] + np.pi) % (2*np.pi) - np.pi
+            # --- innovation vectorized ---
+            v = Z_pred - z_obs   # (M,2)
+            v[:,1] = np.arctan2(np.sin(v[:,1]), np.cos(v[:,1]))
 
-            # gating thô
-            mask = (np.abs(v[:,0]) < 3.0) & (np.abs(v[:,1]) < np.pi/6)
+            # --- gating thô ---
+            mask = (np.abs(v[:,0]) < 2.0) & (np.abs(v[:,1]) < np.pi/6)
             valid_ids = np.where(mask)[0]
 
-            for lm_id in valid_ids:
-                S_total = S_diag_blocks[lm_id] + R_obs
-                try:
-                    d2 = v[lm_id].T @ np.linalg.solve(S_total, v[lm_id])
-                    if d2 < chi2_threshold:
-                        pairs.append((d2, i, lm_id))
-                except np.linalg.LinAlgError:
-                    continue
+            if len(valid_ids) == 0:
+                continue
+
+            v_valid = v[valid_ids]                      # (k,2)
+            S_valid = S_blocks[valid_ids] + R_obs       # (k,2,2)
+
+            # --- tính Mahalanobis vectorized ---
+            # try:
+            #     S_inv = np.linalg.inv(S_valid)   # (k,2,2)
+            # except np.linalg.LinAlgError:
+            #     continue
+
+            d2 = np.einsum('ij,ij->i',
+               v_valid,
+               np.linalg.solve(S_valid, v_valid[:,:,None]).squeeze(-1))
+
+            # --- filter chi2 ---
+            good = d2 < chi2_threshold
+
+            for idx, lm_id in enumerate(valid_ids[good]):
+                pairs.append((d2[good][idx], i, lm_id))
 
         # 3. Chọn cặp khớp One-to-One (GNN)
         pairs.sort(key=lambda x: x[0])
@@ -963,6 +1072,8 @@ class UKFSLAM(Node):
                 # Trả về cả z và R để khởi tạo landmark mới chính xác hơn
                 self.new_features.append((z_obs, R_obs))
 
+
+
 def main(args=None):
     rclpy.init(args=args)
 
@@ -978,6 +1089,3 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()  
-
-
-

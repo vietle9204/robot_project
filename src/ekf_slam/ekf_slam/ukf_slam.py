@@ -59,12 +59,12 @@ class UKFSLAM(Node):
         super().__init__("ekf_slam_node")
     
         # State vector [xr, yr, theta, m1x, m1y, m2x, m2y, ...]
-        self.x = np.ones((3,1)) * 1e-6
+        self.x = np.zeros((3,1))
         # Covariance matrix
         self.P = np.eye(3) * 1e-3
         # Noise
         self.Q = np.eye(3) * 1e-2  # motion noise
-        self.R = np.diag([0.05, 0.055])        # measurement noise
+        self.R = np.diag([0.0025, 0.0036])        # measurement noise
         # lamarks
         self.num_landmarks = 0
         self.max_landmarks = 150    # giới hạn số landmark
@@ -77,7 +77,7 @@ class UKFSLAM(Node):
         self.new_features = []
 
         #UKF
-        self.alpha, self.kappa, self.beta = 0.001, 0.0, 2.0
+        self.alpha, self.kappa, self.beta = 0.01, 0.0, 2.0
 
         self.w_m, self.w_c, self.sigma = None, None, None
 
@@ -88,8 +88,8 @@ class UKFSLAM(Node):
         self.last_vel_cov = None         #2x2
         self.last_predict_time = None       #last predict
 
-        self.thread_pool = ThreadPoolExecutor(max_workers=4)
-        # self.extract_thread = ThreadPoolExecutor(max_workers=4)
+        self.scan_thread = ThreadPoolExecutor(max_workers=4)
+        self.extract_thread = ThreadPoolExecutor(max_workers=4)
         #Ros 2 init
         self.ros_init()
 
@@ -247,9 +247,9 @@ class UKFSLAM(Node):
         # Q_incremental: 
         dist = math.sqrt(dx_robot**2 + dy_robot**2)
         Q_robot = np.diag([
-            0.02 * dist + 1e-12,        # Nhiễu x
-            0.02 * dist + 1e-12,        # Nhiễu y
-            0.02 * math.fabs(dtheta**2) + 1e-12   # Nhiễu theta
+            0.0049 * dist + 1e-12,        # Nhiễu x
+            0.0049 * dist + 1e-12,        # Nhiễu y
+            0.0049 * math.fabs(dtheta**2) + 1e-12   # Nhiễu theta
         ])
  
         self.predict((dx_robot, dy_robot, dtheta), Q_robot)
@@ -266,12 +266,12 @@ class UKFSLAM(Node):
         if self.sigma is None:
             return
         
-        future_features = self.thread_pool.submit(
+        future_features = self.scan_thread.submit(
             self.extract_features_from_scan,
             scan
         )
 
-        future_predict = self.thread_pool.submit(
+        future_predict = self.scan_thread.submit(
             self.predict_all_measurements,
             self.sigma,
             self.w_m,
@@ -312,7 +312,7 @@ class UKFSLAM(Node):
         self.get_logger().info(f"EKF-SLAM: num_landmarks={self.num_landmarks}, pose=({self.x[0,0]:.4f}, {self.x[1,0]:.4f}, {self.x[2,0]:.4f})")
             # self.get_logger().info(...)
 
-        w_m, w_c, sigmas = None, None, None
+        self.w_m, self.w_c, self.sigmas = None, None, None
     
     #=================
     def generate_sigma_points(self, x, P):
@@ -669,7 +669,7 @@ class UKFSLAM(Node):
 
         clusters = []
         futures = [
-            self.thread_pool.submit(
+            self.extract_thread.submit(
                 self.extract_curvature_points,
                 point_cluster,
                 5,          # k
@@ -943,7 +943,7 @@ class UKFSLAM(Node):
     # =========================
     # 5. DATA ASSOCIATION
     # =========================
-    def association(self, features, Z_pred_full, S_full, chi2_threshold=0.65):
+    def association(self, features, Z_pred_full, S_full, chi2_threshold=5.99):
         """
         features: list of (z_obs, R_obs) từ extract_features_from_scan
         Z_pred_full: Vector (2*M,) dự báo [r1, b1, r2, b2...]
@@ -960,36 +960,79 @@ class UKFSLAM(Node):
                 self.new_features.append((z_obs, R_obs))
             return
 
-        # 1. Trích xuất các khối đường chéo S cho từng Landmark
-        # S_diag_blocks[lm_id] = ma trận 2x2
-        # S_diag_blocks = [
-        #     S_full[2*j : 2*j+2, 2*j : 2*j+2] for j in range(self.num_landmarks)
-        # ]
+        # # 1. Trích xuất các khối đường chéo S cho từng Landmark
+        # # S_diag_blocks[lm_id] = ma trận 2x2
+        # # S_diag_blocks = [
+        # #     S_full[2*j : 2*j+2, 2*j : 2*j+2] for j in range(self.num_landmarks)
+        # # ]
 
-        # 2. Tính toán tất cả ứng viên tiềm năng (Mahalanobis)
-        pairs = []  # (d2, feat_id, lm_id)
+        # # 2. Tính toán tất cả ứng viên tiềm năng (Mahalanobis)
+        # pairs = []  # (d2, feat_id, lm_id)
+
+        # for i, (z_obs, R_obs) in enumerate(features):
+        #     # --- reshape ---
+        #     # z_obs = z_obs.reshape(1, 2)   # (1,2)
+        #     # Z_pred = Z_pred_full.reshape(-1, 2)   # (M,2)
+
+        #     # --- innovation ---
+        #     v = Z_pred_full.reshape(-1, 2) - z_obs   # (M,2)
+        #     v[:, 1] = (v[:, 1] + np.pi) % (2*np.pi) - np.pi
+
+        #     # gating thô
+        #     mask = (np.abs(v[:,0]) < 2.0) & (np.abs(v[:,1]) < np.pi/6)
+        #     valid_ids = np.where(mask)[0]
+
+        #     for lm_id in valid_ids:
+        #         S_total = S_full[2*lm_id:2*lm_id+2, 2*lm_id:2*lm_id+2] + R_obs
+        #         try:
+        #             d2 = v[lm_id].T @ np.linalg.solve(S_total, v[lm_id])
+        #             if d2 < chi2_threshold:
+        #                 pairs.append((d2, i, lm_id))
+        #         except np.linalg.LinAlgError:
+        #             continue
+
+        M = self.num_landmarks
+
+        # --- reshape trước (tránh làm lại nhiều lần) ---
+        Z_pred = Z_pred_full.reshape(M, 2)
+
+        # --- lấy block S 2x2 cho từng landmark ---
+        S_blocks = S_full.reshape(M, 2, M, 2).transpose(0,2,1,3)
+        S_blocks = S_blocks[np.arange(M), np.arange(M)]   # (M,2,2)
+
+        pairs = []
 
         for i, (z_obs, R_obs) in enumerate(features):
-            # --- reshape ---
-            # z_obs = z_obs.reshape(1, 2)   # (1,2)
-            # Z_pred = Z_pred_full.reshape(-1, 2)   # (M,2)
 
-            # --- innovation ---
-            v = Z_pred_full.reshape(-1, 2) - z_obs   # (M,2)
-            v[:, 1] = (v[:, 1] + np.pi) % (2*np.pi) - np.pi
+            # --- innovation vectorized ---
+            v = Z_pred - z_obs   # (M,2)
+            v[:,1] = np.arctan2(np.sin(v[:,1]), np.cos(v[:,1]))
 
-            # gating thô
+            # --- gating thô ---
             mask = (np.abs(v[:,0]) < 2.0) & (np.abs(v[:,1]) < np.pi/6)
             valid_ids = np.where(mask)[0]
 
-            for lm_id in valid_ids:
-                S_total = S_full[2*lm_id:2*lm_id+2, 2*lm_id:2*lm_id+2] + R_obs
-                try:
-                    d2 = v[lm_id].T @ np.linalg.solve(S_total, v[lm_id])
-                    if d2 < chi2_threshold:
-                        pairs.append((d2, i, lm_id))
-                except np.linalg.LinAlgError:
-                    continue
+            if len(valid_ids) == 0:
+                continue
+
+            v_valid = v[valid_ids]                      # (k,2)
+            S_valid = S_blocks[valid_ids] + R_obs       # (k,2,2)
+
+            # --- tính Mahalanobis vectorized ---
+            # try:
+            #     S_inv = np.linalg.inv(S_valid)   # (k,2,2)
+            # except np.linalg.LinAlgError:
+            #     continue
+
+            d2 = np.einsum('ij,ij->i',
+               v_valid,
+               np.linalg.solve(S_valid, v_valid[:,:,None]).squeeze(-1))
+
+            # --- filter chi2 ---
+            good = d2 < chi2_threshold
+
+            for idx, lm_id in enumerate(valid_ids[good]):
+                pairs.append((d2[good][idx], i, lm_id))
 
         # 3. Chọn cặp khớp One-to-One (GNN)
         pairs.sort(key=lambda x: x[0])

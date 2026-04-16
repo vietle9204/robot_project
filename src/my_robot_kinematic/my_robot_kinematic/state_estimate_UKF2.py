@@ -96,13 +96,13 @@ class state_estimate(Node):
         self.last_enc_msg = None
         self.enc_odom = np.zeros((3,1)) # dead reckoning from encoder
         self.enc_buffer = deque(maxlen=20)
-        self.enc_R = np.array([0.04, 0.04, 0.005, 0.002, 0.002])
+        self.enc_R = np.array([0.01, 0.01, 0.01, 0.004, 0.004])
         # imu
         self.create_subscription(Imu, self.imu_topic, self.imu_callback, qos)
         self.last_imu_msg =  None
         self.imu_theta = 0.0
         self.imu_buffer = deque(maxlen=20)
-        self.imu_R = np.array([0.006, 0.0036]) 
+        self.imu_R = np.array([0.036, 0.0049]) 
         # mag
         self.create_subscription(MagneticField, 'robot1/mag/data', self.mag_filt_cb, qos)
         self.last_mag_msg = None
@@ -211,7 +211,9 @@ class state_estimate(Node):
             imu_dt = t_imu - imu_last_time
 
             angular_vel_yaw = float(imu_msg.angular_velocity.z)
-            angular_vel_yaw =  angular_vel_yaw #- 0.004
+            # angular_vel_yaw =  angular_vel_yaw #- 0.004
+            if math.fabs(angular_vel_yaw) < 0.04:
+                angular_vel_yaw = 0.0
             self.imu_theta += angular_vel_yaw*imu_dt
             imu_theta = angle_normalize(self.imu_theta)
 
@@ -297,8 +299,8 @@ class state_estimate(Node):
 
         # Predic
         Q = self.Q_k.copy()
-        Q[0,0] = Q[0,0] + 4.0*max(0.0, -4*1e-4 + (math.fabs(enc_v - self.x_k[3,0])**2)) + 10*max(0.0, -10*1e-4+ (math.fabs(enc_v  - self.last_enc_msg.twist.linear.x)**2))
-        Q[1,1] = Q[1,1] + 4.0*max(0.0, -10*1e-4 + (math.fabs(0.5*(enc_w + angular_vel_yaw) - self.x_k[4,0])**2)) + 10*max(0.0, -5*1e-3 + (math.fabs(0.5*(enc_w - self.last_enc_msg.twist.angular.z) + 0.5*(angular_vel_yaw - self.last_imu_msg.angular_velocity.z))**2))
+        Q[0,0] = Q[0,0] + 4.0*max(0.0, -10*1e-4 + (math.fabs(enc_v - self.x_k[3,0])**2)) + 10*max(0.0, -10*1e-4+ (math.fabs(enc_v  - self.last_enc_msg.twist.linear.x)**2))
+        Q[1,1] = Q[1,1] + 4.0*max(0.0, -25*1e-4 + (math.fabs(0.5*(enc_w + angular_vel_yaw) - self.x_k[4,0])**2)) + 10*max(0.0, -25*1e-4 + (math.fabs(0.5*(enc_w - self.last_enc_msg.twist.angular.z)) + math.fabs(0.5*(angular_vel_yaw - self.last_imu_msg.angular_velocity.z))**2))
         # Q[0,0] = Q[0,0] + 4.0*max(0.0, -25*1e-4 + (math.fabs(enc_v - self.x_k[3,0])**2)) + 10*max(0.0, -25*1e-4+ (math.fabs(enc_v  - self.last_enc_msg.twist.linear.x)**2))
         # Q[1,1] = Q[1,1] + 4.0*max(0.0, -25*1e-4 + (math.fabs(0.5*(enc_w + angular_vel_yaw) - self.x_k[4,0])**2)) + 10*max(0.0, -50*1e-4 + (math.fabs(0.5*(enc_w - self.last_enc_msg.twist.angular.z) + 0.5*(angular_vel_yaw - self.last_imu_msg.angular_velocity.z))**2))
 
@@ -311,6 +313,12 @@ class state_estimate(Node):
         
         # update
 
+        if math.fabs(angular_vel_yaw) < 0.04:
+                angular_vel_yaw = 0.0
+        if math.fabs(enc_w) < 0.03:
+                enc_w = 0.0
+        if math.fabs(enc_v) < 0.03:
+                enc_v = 0.0
         self.z[0,0] = imu_theta
         self.z[1,0] = angular_vel_yaw
         self.z[2:5,0] = enc_odom[:3,0]
@@ -412,7 +420,7 @@ class state_estimate(Node):
         P_new = dx_weighted @ dx.T
         
         self.x_k = x_new
-        self.P_k = 0.5 * (P_new + P_new.T) + np.eye(self.n_x) * 1e-9
+        self.P_k = 0.5 * (P_new + P_new.T) + np.eye(self.n_x) * 1e-7
         self.sigma_pred_c = sigma_pred[:self.n_x, :]
 
 
