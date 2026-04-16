@@ -212,8 +212,8 @@ class state_estimate(Node):
 
             angular_vel_yaw = float(imu_msg.angular_velocity.z)
             # angular_vel_yaw =  angular_vel_yaw #- 0.004
-            if math.fabs(angular_vel_yaw) < 0.04:
-                angular_vel_yaw = 0.0
+            # if math.fabs(angular_vel_yaw) < 0.04:
+            #     angular_vel_yaw = 0.0
             self.imu_theta += angular_vel_yaw*imu_dt
             imu_theta = angle_normalize(self.imu_theta)
 
@@ -313,12 +313,12 @@ class state_estimate(Node):
         
         # update
 
-        if math.fabs(angular_vel_yaw) < 0.03:
-                angular_vel_yaw = 0.0
-        if math.fabs(enc_w) < 0.02:
-                enc_w = 0.0
-        if math.fabs(enc_v) < 0.02:
-                enc_v = 0.0
+        # if math.fabs(angular_vel_yaw) < 0.03:
+        #         angular_vel_yaw = 0.0
+        # if math.fabs(enc_w) < 0.02:
+        #         enc_w = 0.0
+        # if math.fabs(enc_v) < 0.02:
+        #         enc_v = 0.0
         self.z[0,0] = imu_theta
         self.z[1,0] = angular_vel_yaw
         self.z[2:5,0] = enc_odom[:3,0]
