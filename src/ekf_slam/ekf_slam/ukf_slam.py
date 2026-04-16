@@ -77,7 +77,7 @@ class UKFSLAM(Node):
         self.new_features = []
 
         #UKF
-        self.alpha, self.kappa, self.beta = 0.001, 0.0, 2.0
+        self.alpha, self.kappa, self.beta = 0.01, 0.0, 2.0
 
         self.w_m, self.w_c, self.sigma = None, None, None
 
@@ -241,7 +241,7 @@ class UKFSLAM(Node):
         dx_robot =  math.cos(self.last_odom[2]) * dx + math.sin(self.last_odom[2]) * dy
         dy_robot = -math.sin(self.last_odom[2]) * dx + math.cos(self.last_odom[2]) * dy
 
-        if abs(dx_robot) < 0.001 and abs(dy_robot) < 0.001 and abs(dtheta) < 0.001:
+        if abs(dx_robot) < 0.005 and abs(dy_robot) < 0.005 and abs(dtheta) < 0.005:
             dx_robot, dy_robot, dtheta = 1e-15, 1e-15, 1e-15
         
         # Q_incremental: 
