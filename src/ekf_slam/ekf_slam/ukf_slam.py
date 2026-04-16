@@ -64,7 +64,7 @@ class UKFSLAM(Node):
         self.P = np.eye(3) * 1e-3
         # Noise
         self.Q = np.eye(3) * 1e-2  # motion noise
-        self.R = np.diag([0.0025, 0.0036])        # measurement noise
+        self.R = np.diag([0.0049, 0.0064])        # measurement noise
         # lamarks
         self.num_landmarks = 0
         self.max_landmarks = 150    # giới hạn số landmark
@@ -241,7 +241,7 @@ class UKFSLAM(Node):
         dx_robot =  math.cos(self.last_odom[2]) * dx + math.sin(self.last_odom[2]) * dy
         dy_robot = -math.sin(self.last_odom[2]) * dx + math.cos(self.last_odom[2]) * dy
 
-        if abs(dx_robot) < 0.002 and abs(dy_robot) < 0.002 and abs(dtheta) < 0.002:
+        if abs(dx_robot) < 0.001 and abs(dy_robot) < 0.001 and abs(dtheta) < 0.001:
             dx_robot, dy_robot, dtheta = 1e-15, 1e-15, 1e-15
         
         # Q_incremental: 
