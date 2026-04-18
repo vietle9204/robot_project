@@ -67,7 +67,7 @@ class state_estimate(Node):
 
         # define state vector
         self.x_k = np.zeros((5, 1))   # [x, y, theta, v, w]
-        self.Q_k = np.diag([0.0005, 0.0005])
+        self.Q_k = np.diag([0.0001, 0.0001])
         self.P_k = np.eye(5) * 0.1
         #define measurement vector
         self.z = np.zeros((8,1))
@@ -96,7 +96,7 @@ class state_estimate(Node):
         self.last_enc_msg = None
         self.enc_odom = np.zeros((3,1)) # dead reckoning from encoder
         self.enc_buffer = deque(maxlen=20)
-        self.enc_R = np.array([0.01, 0.01, 0.01, 0.004, 0.004])
+        self.enc_R = np.array([1.0, 1.0, 0.01, 0.004, 0.004])
         # imu
         self.create_subscription(Imu, self.imu_topic, self.imu_callback, qos)
         self.last_imu_msg =  None
@@ -212,7 +212,7 @@ class state_estimate(Node):
 
             angular_vel_yaw = float(imu_msg.angular_velocity.z)
             # angular_vel_yaw =  angular_vel_yaw #- 0.004
-            self.imu_theta += (angular_vel_yaw-0.004)*imu_dt
+            self.imu_theta += (angular_vel_yaw-0.003)*imu_dt
             imu_theta = angle_normalize(self.imu_theta)
 
             self.imu_buffer.popleft()
@@ -239,7 +239,10 @@ class state_estimate(Node):
             enc_w = float(enc_msg.twist.angular.z)
             self.enc_odom[0,0] += enc_v*math.cos(self.enc_odom[2,0])*enc_dt
             self.enc_odom[1,0] += enc_v*math.sin(self.enc_odom[2,0])*enc_dt
-            self.enc_odom[2,0] += enc_w*enc_dt
+            if math.fabs(enc_w) > 0.005:
+                self.enc_odom[2,0] += (enc_w-0.0005)*enc_dt
+            else:
+                self.enc_odom[2,0] += enc_w*enc_dt
 
             enc_odom = self.enc_odom.copy()
             enc_odom[2,0] = angle_normalize(enc_odom[2,0])
@@ -297,11 +300,9 @@ class state_estimate(Node):
 
         # Predic
         Q = self.Q_k.copy()
-        Q[0,0] = Q[0,0] + 4.0*max(0.0, -10*1e-4 + (math.fabs(enc_v - self.x_k[3,0])**2)) + 10*max(0.0, -10*1e-4+ (math.fabs(enc_v  - self.last_enc_msg.twist.linear.x)**2))
-        Q[1,1] = Q[1,1] + 4.0*max(0.0, -25*1e-4 + (math.fabs(0.5*(enc_w + angular_vel_yaw) - self.x_k[4,0])**2)) + 10*max(0.0, -25*1e-4 + (math.fabs(0.5*(enc_w - self.last_enc_msg.twist.angular.z)) + math.fabs(0.5*(angular_vel_yaw - self.last_imu_msg.angular_velocity.z))**2))
-        # Q[0,0] = Q[0,0] + 4.0*max(0.0, -25*1e-4 + (math.fabs(enc_v - self.x_k[3,0])**2)) + 10*max(0.0, -25*1e-4+ (math.fabs(enc_v  - self.last_enc_msg.twist.linear.x)**2))
-        # Q[1,1] = Q[1,1] + 4.0*max(0.0, -25*1e-4 + (math.fabs(0.5*(enc_w + angular_vel_yaw) - self.x_k[4,0])**2)) + 10*max(0.0, -50*1e-4 + (math.fabs(0.5*(enc_w - self.last_enc_msg.twist.angular.z) + 0.5*(angular_vel_yaw - self.last_imu_msg.angular_velocity.z))**2))
-
+        Q[0,0] = Q[0,0] + 4.0*max(0.0, -10*1e-4 + ((enc_v- self.x_k[3,0])**2)) + 10*max(0.0, -10*1e-4+ ((enc_v - self.last_enc_msg.twist.linear.x)**2))
+        Q[1,1] = Q[1,1] + 4.0*max(0.0, -25*1e-4 + ((0.5*(enc_w + angular_vel_yaw) - self.x_k[4,0])**2)) + 10*max(0.0, -25*1e-4 + ((0.5*(enc_w - self.last_enc_msg.twist.angular.z))**2 + (0.5*(angular_vel_yaw - self.last_imu_msg.angular_velocity.z))**2))
+  
         predict_dt = t_min - self.odom_time
         self.UKF_prediction(predict_dt, Q)
 
@@ -320,18 +321,18 @@ class state_estimate(Node):
 
         imu_R = self.imu_R.copy()
         imu_R[0] = imu_R[0] + (0.02*math.fabs(self.imu_theta))**2
-        if imu_flag:
+        if not imu_flag:
             imu_R[0] = imu_R[0] + 0.0001
         enc_R = self.enc_R.copy()
-        enc_R[0] = enc_R[0] + (0.0004*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
-        enc_R[1] = enc_R[1] + (0.0004*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
+        enc_R[0] = enc_R[0] + (0.01*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
+        enc_R[1] = enc_R[1] + (0.01*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
         enc_R[2] = enc_R[2] + (0.01*math.fabs(self.enc_odom[2,0]))**2
-        if enc_flag:
+        if not enc_flag:
             enc_R[0] = enc_R[0] + 0.0001
             enc_R[1] = enc_R[1] + 0.0001
             enc_R[2] = enc_R[2] + 0.0001
         mag_R = self.mag_R.copy()
-        if mag_flag:
+        if not mag_flag:
             mag_R[0] = mag_R[0] + 0.0001
         R = np.diag([imu_R[0], imu_R[1], enc_R[0], enc_R[1], enc_R[2], self.enc_R[3], self.enc_R[4], mag_R[0]])
                 
@@ -371,6 +372,9 @@ class state_estimate(Node):
 
         v = sigma[3, :] + sigma[5, :]
         w = sigma[4, :] + sigma[6, :]
+
+        v = np.where(np.abs(v) < 0.05, 0, v)
+        w = np.where(np.abs(w) < 0.05, 0, w)
 
         theta = sigma[2, :]
         sin_theta = np.sin(theta)

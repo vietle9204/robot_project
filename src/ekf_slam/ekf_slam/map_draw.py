@@ -26,6 +26,11 @@ qos2 = QoSProfile(
     durability=DurabilityPolicy.VOLATILE,
     depth=10
 )
+qos_map = QoSProfile(
+    depth=10,
+    reliability=ReliabilityPolicy.RELIABLE,
+    durability=DurabilityPolicy.TRANSIENT_LOCAL  
+)
 
 class OccupancyMapping(Node):
     def __init__(self):
@@ -43,10 +48,10 @@ class OccupancyMapping(Node):
 
         # ===== Log odds =====
         self.log_odds = np.zeros((self.height, self.width), dtype=np.float32)
-        self.lo_occ = 0.85
-        self.lo_free = -0.4
-        self.lo_min = -5.0
-        self.lo_max = 10.0
+        self.lo_occ = 1.0
+        self.lo_free = -0.3
+        self.lo_min = -2.0
+        self.lo_max = 20.0
 
         # ===== State =====
         self.last_pose_used = None
@@ -74,7 +79,7 @@ class OccupancyMapping(Node):
         self.ts.registerCallback(self.sync_cb)
 
         # ===== Publisher =====
-        self.map_pub = self.create_publisher(OccupancyGrid, '/map', 1)
+        self.map_pub = self.create_publisher(OccupancyGrid, '/map', qos_map)
 
         self.get_logger().info("Occupancy Mapping FULL Started")
 
@@ -259,8 +264,8 @@ class OccupancyMapping(Node):
         msg.info.origin.orientation.w = 1.0
 
         occ_grid = np.full(self.log_odds.shape, UNKNOWN, dtype=np.int8)
-        occ_grid[self.log_odds > 1.0] = OCCUPIED
-        occ_grid[self.log_odds < -1.0] = FREE
+        occ_grid[self.log_odds > 3.0] = OCCUPIED
+        occ_grid[self.log_odds < -1.2] = FREE
 
         msg.data = occ_grid.ravel().tolist()
 

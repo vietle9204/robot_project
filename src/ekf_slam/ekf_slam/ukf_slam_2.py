@@ -243,7 +243,7 @@ class UKFSLAM(Node):
         # delta_robot = R.T @ np.array([[dx], [dy], [dtheta]])
         dx_robot =  math.cos(self.last_odom[2]) * dx + math.sin(self.last_odom[2]) * dy
         dy_robot = -math.sin(self.last_odom[2]) * dx + math.cos(self.last_odom[2]) * dy
-
+        dy_robot = 0.0
         # if abs(dx_robot) < 0.0005 and abs(dy_robot) < 0.0005 and abs(dtheta) < 0.0005:
         #     dx_robot, dy_robot, dtheta = np.array([[1e-15], [1e-15], [1e-15]])
 
@@ -436,7 +436,7 @@ class UKFSLAM(Node):
         n = x.shape[0]
 
         # generate sigma points
-        w_m, w_c, sigma_points = self.generate_sigma_points(x, P, 0.05)
+        w_m, w_c, sigma_points = self.generate_sigma_points(x, P, 0.0001)
         # -----------Dự báo từng Sigma Point qua Motion Model---------
         Z_sigmas = np.zeros((2*n + 1, 2))   
         z_pred = np.zeros((2, 1))
