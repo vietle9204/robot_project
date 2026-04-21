@@ -250,7 +250,7 @@ class UKFSLAM(Node):
         Q_robot = np.diag([
             0.0036 * dist + 1e-15,        # Nhiễu x
             0.0036 * dist + 1e-15,        # Nhiễu y
-            0.0016 * math.fabs(dtheta**2) + 1e-15   # Nhiễu theta
+            0.001 * math.fabs(dtheta**2) + 1e-15   # Nhiễu theta
         ])
  
         self.predict((dx_robot, dy_robot, dtheta), Q_robot)
