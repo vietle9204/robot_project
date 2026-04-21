@@ -25,8 +25,8 @@ def generate_launch_description():
             executable='A_star',
             name='A_star',
             output='screen',
-            prefix='xterm -e',
-            parameters=[{'map_file': LaunchConfiguration('map_file')}],
+            # prefix='xterm -e',
+            # parameters=[{'map_file': LaunchConfiguration('map_file')}],
         ),
 
         Node(
@@ -34,7 +34,7 @@ def generate_launch_description():
             executable='my_robot_nav',
             name='my_robot_nav',
             output='screen',
-            prefix='xterm -e',
+            # prefix='xterm -e',
         ),
 
         Node(
@@ -43,6 +43,6 @@ def generate_launch_description():
             name='VFH_alg_test',
             output='screen',
             parameters=[{'goal_topic': 'goal_tmp'}],
-            prefix='xterm -e',
+            # prefix='xterm -e',
         ),
     ])
