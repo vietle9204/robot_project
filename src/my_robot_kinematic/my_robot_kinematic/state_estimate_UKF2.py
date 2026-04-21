@@ -54,7 +54,7 @@ class state_estimate(Node):
         self.L = self.n_x + self.n_w
 
         # define sigma point parameter
-        self.alpha = 0.1
+        self.alpha = 0.5
         self.beta = 2
         self.kappa = 0
         self.lam = self.alpha**2 * (self.L + self.kappa) - self.L
@@ -302,8 +302,8 @@ class state_estimate(Node):
 
         # Predic
         Q = self.Q_k.copy()
-        Q[0,0] = Q[0,0] + 4.0*max(0.0, -10*1e-4 + ((enc_v- self.x_k[3,0])**2)) + 25*max(0.0, -10*1e-4+ ((enc_v - self.last_enc_msg.twist.linear.x)**2))
-        Q[1,1] = Q[1,1] + 4.0*max(0.0, -25*1e-4 + ((0.5*(enc_w + angular_vel_yaw) - self.x_k[4,0])**2)) + 25*max(0.0, -25*1e-4 + ((0.5*(enc_w - self.last_enc_msg.twist.angular.z))**2 + (0.5*(angular_vel_yaw - self.last_imu_msg.angular_velocity.z))**2))
+        Q[0,0] = Q[0,0] + 4.0*max(0.0, -10*1e-4 + ((enc_v- self.x_k[3,0])**2)) + 10*max(0.0, -10*1e-4+ ((enc_v - self.last_enc_msg.twist.linear.x)**2))
+        Q[1,1] = Q[1,1] + 4.0*max(0.0, -25*1e-4 + ((0.5*(enc_w + angular_vel_yaw) - self.x_k[4,0])**2)) + 10*max(0.0, -25*1e-4 + ((0.5*(enc_w - self.last_enc_msg.twist.angular.z))**2 + (0.5*(angular_vel_yaw - self.last_imu_msg.angular_velocity.z))**2))
   
         predict_dt = t_min - self.odom_time
         self.UKF_prediction(predict_dt, Q)
@@ -326,9 +326,9 @@ class state_estimate(Node):
         if not imu_flag:
             imu_R[0] = imu_R[0] + 0.0001
         enc_R = self.enc_R.copy()
-        enc_R[0] = enc_R[0] + (0.02*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
-        enc_R[1] = enc_R[1] + (0.02*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
-        enc_R[2] = enc_R[2] + (0.02*math.fabs(self.enc_odom[2,0]))**2
+        enc_R[0] = enc_R[0] + (0.01*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
+        enc_R[1] = enc_R[1] + (0.01*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
+        enc_R[2] = enc_R[2] + (0.01*math.fabs(self.enc_odom[2,0]))**2
         if not enc_flag:
             enc_R[0] = enc_R[0] + 0.0001
             enc_R[1] = enc_R[1] + 0.0001
