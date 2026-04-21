@@ -61,7 +61,7 @@ class UKFSLAM(Node):
         # State vector [xr, yr, theta, m1x, m1y, m2x, m2y, ...]
         self.x = np.zeros((3,1))
         # Covariance matrix
-        self.P = np.eye(3) * 1e-3
+        self.P = np.eye(3) * 1e-6
         # Noise
         self.Q = np.eye(3) * 1e-2  # motion noise
         self.R = np.diag([0.0036, 0.0049])        # measurement noise
@@ -77,7 +77,7 @@ class UKFSLAM(Node):
         self.new_features = []
 
         #UKF
-        self.alpha, self.kappa, self.beta = 0.015, 0.0, 2.0
+        self.alpha, self.kappa, self.beta = 0.02, 0.0, 2.0
 
         self.w_m, self.w_c, self.sigma = None, None, None
 
@@ -115,7 +115,7 @@ class UKFSLAM(Node):
         self.ts = ApproximateTimeSynchronizer(
             [self.odom_sub, self.scan_sub],
             queue_size=30,
-            slop=0.03  # sai số thời gian cho phép (30ms)
+            slop=0.018  # sai số thời gian cho phép (30ms)
         )
 
         self.ts.registerCallback(self.sync_cb)
@@ -240,6 +240,7 @@ class UKFSLAM(Node):
         # --- robot_motion ---
         dx_robot =  math.cos(self.last_odom[2]) * dx + math.sin(self.last_odom[2]) * dy
         dy_robot = -math.sin(self.last_odom[2]) * dx + math.cos(self.last_odom[2]) * dy
+        # dy_robot = 0.0
 
         if abs(dx_robot) < 0.001 and abs(dy_robot) < 0.001 and abs(dtheta) < 0.001:
             dx_robot, dy_robot, dtheta = 1e-15, 1e-15, 1e-15
@@ -247,9 +248,9 @@ class UKFSLAM(Node):
         # Q_incremental: 
         dist = math.sqrt(dx_robot**2 + dy_robot**2)
         Q_robot = np.diag([
-            0.0025 * dist + 1e-12,        # Nhiễu x
-            0.0025 * dist + 1e-12,        # Nhiễu y
-            0.0025 * math.fabs(dtheta**2) + 1e-12   # Nhiễu theta
+            0.0036 * dist + 1e-15,        # Nhiễu x
+            0.0036 * dist + 1e-15,        # Nhiễu y
+            0.0016 * math.fabs(dtheta**2) + 1e-15   # Nhiễu theta
         ])
  
         self.predict((dx_robot, dy_robot, dtheta), Q_robot)
@@ -582,7 +583,7 @@ class UKFSLAM(Node):
         # B. Tính hiệp phương sai tự thân của Landmark mới (Uncertainty)
         # P_ll = Gr * P_robot * Gr.T + Gz * R_obs * Gz.T
         P_robot_only = self.P[0:3, 0:3]
-        P_ll = Gr @ P_robot_only @ Gr.T + Gz @ R_obs @ Gz.T
+        P_ll = Gr @ P_robot_only @ Gr.T + Gz @ R_obs @ Gz.T + 9.0*1e-4*np.eye(2)
 
         # C. Ghép vào ma trận P mới
         P_new = np.zeros((n_old + 2, n_old + 2))
@@ -651,7 +652,7 @@ class UKFSLAM(Node):
         point_cloud[:,3] = angles
         point_cloud[:,4] = valid_indices
 
-        segment_clusters = self.segment_scan(point_cloud, 0.3, 3)
+        segment_clusters = self.segment_scan(point_cloud, 0.2, 9)
 
         # 2. Chạy trích xuất đặc trưng cho TỪNG cụm
         # clusters = []
@@ -695,7 +696,7 @@ class UKFSLAM(Node):
             return []
         
         clusters = self.cluster_features(curv_pts,
-                     angle_thresh=0.02)
+                     angle_thresh=0.03)
 
         measurements = [self.cluster_to_feature(c) for c in clusters]
         return measurements
@@ -936,7 +937,7 @@ class UKFSLAM(Node):
     def adaptive_min_cluster_size(self, r):
         if r < 1.0: return 4
         if r < 3.0: return 3
-        if r < 2.0: return 2
+        if r < 5.0: return 2
         return 1
 
 

@@ -54,7 +54,7 @@ class state_estimate(Node):
         self.L = self.n_x + self.n_w
 
         # define sigma point parameter
-        self.alpha = 0.5
+        self.alpha = 1.0
         self.beta = 2
         self.kappa = 0
         self.lam = self.alpha**2 * (self.L + self.kappa) - self.L
@@ -68,7 +68,9 @@ class state_estimate(Node):
         # define state vector
         self.x_k = np.zeros((5, 1))   # [x, y, theta, v, w]
         self.Q_k = np.diag([0.0001, 0.0001])
-        self.P_k = np.eye(5) * 0.1
+        self.P_k = np.eye(5) * 0.00001
+        self.P_k[3,3] = 0.01
+        self.P_k[4,4] = 0.01
         #define measurement vector
         self.z = np.zeros((8,1))
         self.measure_yaw_idx = (0,4,7)
@@ -96,13 +98,13 @@ class state_estimate(Node):
         self.last_enc_msg = None
         self.enc_odom = np.zeros((3,1)) # dead reckoning from encoder
         self.enc_buffer = deque(maxlen=20)
-        self.enc_R = np.array([1.0, 1.0, 0.01, 0.004, 0.004])
+        self.enc_R = np.array([10.0, 10.0, 0.1, 0.0025, 0.004])
         # imu
         self.create_subscription(Imu, self.imu_topic, self.imu_callback, qos)
         self.last_imu_msg =  None
         self.imu_theta = 0.0
         self.imu_buffer = deque(maxlen=20)
-        self.imu_R = np.array([0.036, 0.0049]) 
+        self.imu_R = np.array([0.1, 0.0049]) 
         # mag
         self.create_subscription(MagneticField, 'robot1/mag/data', self.mag_filt_cb, qos)
         self.last_mag_msg = None
@@ -110,7 +112,7 @@ class state_estimate(Node):
         self.mag_yaw = None
         self.mag_slope = 0.0
         self.mag_buffer = deque(maxlen=20)
-        self.mag_R = np.array([0.005])
+        self.mag_R = np.array([0.01])
         # publish odommetry
         self.odom_pub = self.create_publisher(Odometry, self.odometry_topic, qos2)
 
@@ -212,7 +214,7 @@ class state_estimate(Node):
 
             angular_vel_yaw = float(imu_msg.angular_velocity.z)
             # angular_vel_yaw =  angular_vel_yaw #- 0.004
-            self.imu_theta += (angular_vel_yaw-0.003)*imu_dt
+            self.imu_theta += (angular_vel_yaw-0.0033)*imu_dt
             imu_theta = angle_normalize(self.imu_theta)
 
             self.imu_buffer.popleft()
@@ -239,10 +241,10 @@ class state_estimate(Node):
             enc_w = float(enc_msg.twist.angular.z)
             self.enc_odom[0,0] += enc_v*math.cos(self.enc_odom[2,0])*enc_dt
             self.enc_odom[1,0] += enc_v*math.sin(self.enc_odom[2,0])*enc_dt
-            if math.fabs(enc_w) > 0.005:
-                self.enc_odom[2,0] += (enc_w-0.0005)*enc_dt
-            else:
-                self.enc_odom[2,0] += enc_w*enc_dt
+            # if math.fabs(enc_w) > 0.0005:
+            #     self.enc_odom[2,0] += (enc_w + 0.0001)*enc_dt
+            # else:
+            self.enc_odom[2,0] += enc_w*enc_dt
 
             enc_odom = self.enc_odom.copy()
             enc_odom[2,0] = angle_normalize(enc_odom[2,0])
