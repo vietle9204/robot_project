@@ -540,17 +540,25 @@ class state_estimate(Node):
 
         mask = np.abs(w) <= 1e-3
 
+        w_safe = np.where(mask, 1.0, w) 
+
+        # 3. Calculate the turning components using the safe divisor
+        delta_x_turn = (v / w_safe) * (sin_new_theta - sin_theta)
+        delta_y_turn = -(v / w_safe) * (cos_new_theta - cos_theta)
+
+        # 4. Use the mask to pick the correct physics model
         new_x = np.where(
             mask,
-            sigma[0, :] + v * cos_theta * dt,
-            sigma[0, :] + v/w * (sin_new_theta - sin_theta)
+            sigma[0, :] + v * cos_theta * dt,   # Straight line model
+            sigma[0, :] + delta_x_turn          # Curved path model
         )
 
         new_y = np.where(
             mask,
-            sigma[1, :] + v * np.sin(theta) * dt,
-            sigma[1, :] - v/w * (cos_new_theta - cos_theta)
+            sigma[1, :] + v * sin_theta * dt,   # Straight line model
+            sigma[1, :] + delta_y_turn          # Curved path model
         )
+
         sigma_pred = np.vstack([new_x, new_y, new_theta, v, w])
         
         # Tính toán Mean mới (Circular mean cho theta)
