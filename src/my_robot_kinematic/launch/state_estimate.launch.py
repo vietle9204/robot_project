@@ -10,13 +10,26 @@ config_file_path = os.path.join(
             get_package_share_directory("odom_to_tf"), "config", "odom_to_tf.yaml"
         )
 
+config = os.path.join(
+            get_package_share_directory("my_robot_kinematic"), "config", "ukf_st.yaml"
+        )
+
+ukf_config_arg = DeclareLaunchArgument(
+    'ukf_config',
+    default_value=config
+)
+
+ukf_config = LaunchConfiguration('ukf_config')
+
 def generate_launch_description():
 
     use_sim_time = LaunchConfiguration('use_sim_time')
     publish_tf = LaunchConfiguration('publish_tf')
     use_LPF = LaunchConfiguration('use_LPF')
 
+
     return LaunchDescription([
+        ukf_config_arg,
 
         # ===== Declare arguments =====
         DeclareLaunchArgument(
@@ -40,7 +53,8 @@ def generate_launch_description():
             executable='state_estimate_UKF2',
             name='state_estimate_UKF',
             output='screen',
-            parameters=[{'use_sim_time': use_sim_time}]
+            parameters=[ukf_config,
+                {'use_sim_time': use_sim_time}]
         ),
 
         # ===== Odom to TF =====

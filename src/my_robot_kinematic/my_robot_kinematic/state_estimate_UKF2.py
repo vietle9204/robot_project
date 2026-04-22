@@ -30,22 +30,148 @@ def normalize_angle_vec(a):
 
 class state_estimate(Node):
     def __init__(self):    
-        super().__init__('odom_node')
+        super().__init__('state_estimate_UKF')
         # Parameters
-        self.parameters()
+        self.declare_params()
+        self.load_params()
+
+        self.get_logger().info("===== PARAM LOADED =====")
+        # topics
+        self.get_logger().info(f"vel_encoder_topic: {self.vel_encoder_topic}")
+        self.get_logger().info(f"imu_topic: {self.imu_topic}")
+        self.get_logger().info(f"mag_topic: {self.mag_topic}")
+        #
+        self.get_logger().info(f"time_syns: {self.time_syns_thres}")
+        # sigma point
+        self.get_logger().info(f"alpha: {self.alpha}, beta: {self.beta}, kappa: {self.kappa}")
+        # state
+        self.get_logger().info(f"x_k shape: {self.x_k.shape}, value:\n{self.x_k}")
+        self.get_logger().info(f"P_k shape: {self.P_k.shape}")
+        self.get_logger().info(f"Q_k shape: {self.Q_k.shape}")
+        # offset
+        self.get_logger().info(f"enc_pos_offset: {self.enc_pos_offset.flatten()}")
+        self.get_logger().info(f"imu_pos_offset: {self.imu_pos_offset.flatten()}")
+        self.get_logger().info(f"mag_pos_offset: {self.mag_pos_offset.flatten()}")
+        # noise
+        self.get_logger().info(f"R_enc (raw): {self.R_enc}")
+        self.get_logger().info(f"R_imu (raw): {self.R_imu}")
+        self.get_logger().info(f"R_mag (raw): {self.R_mag}")
+        # adaptive
+        self.get_logger().info(f"adaptive_v: {self.adaptive_v}")
+        self.get_logger().info(f"adaptive_w: {self.adaptive_w}")
+        self.get_logger().info(f"R_enc_scale: {self.R_enc_scale}, R_imu_scale: {self.R_imu_scale}")
+        self.get_logger().info("===== END PARAM =====")
+
         #Init UKF
         self.init_UKF()
         # Init subcription and publish
         self.init_pub_sub()
 
-    def parameters(self):
-        self.declare_parameter('vel_encoder_topic', 'robot1/vel_encoder/data')
+
+    def declare_params(self):
+        # ===== topics =====
+        self.declare_parameter('vel_encoder_topic', '/robot1/vel_encoder/data')
         self.declare_parameter('odometry_topic', '/odometry/data')
-        self.declare_parameter('imu_topic', 'robot1/imu/data')
-        
+        self.declare_parameter('imu_topic', '/robot1/imu/data')
+        self.declare_parameter('mag_topic', '/robot1/mag/data')
+
+        # ===== sigma =====
+        self.declare_parameter('sigmapoint.alpha', 0.5)
+        self.declare_parameter('sigmapoint.beta', 2.0)
+        self.declare_parameter('sigmapoint.kappa', 0.0)
+
+        # syns time
+        self.declare_parameter('time_syns_thres', 0.01)
+
+        # ===== state =====
+        self.declare_parameter('state.init_state', [0.0,0.0,0.0,0.0,0.0])
+        self.declare_parameter('state.P', (np.eye(5)*1e-3).flatten().tolist())
+        self.declare_parameter('state.Q', (np.eye(2)*1e-4).flatten().tolist())
+        self.declare_parameter('state.motion_threshold', 0.05)
+
+        # ===== encoder =====
+        self.declare_parameter('encoder.pos_offset', [0.0,0.0,0.0])
+        self.declare_parameter('encoder.vel_offset', [0.0,0.0])
+        self.declare_parameter('encoder.R', [10.0, 10.0, 0.1, 0.0025, 0.004])
+
+        # ===== imu =====
+        self.declare_parameter('imu.pos_offset', [0.0])
+        self.declare_parameter('imu.vel_offset', [0.0])
+        self.declare_parameter('imu.R', [0.1, 0.0049])
+
+        # ===== mag =====
+        self.declare_parameter('mag.pos_offset', [0.0])
+        self.declare_parameter('mag.R', [0.01])
+
+        # ===== adaptive =====
+        self.declare_parameter('adaptive.v.a1', 4.0)
+        self.declare_parameter('adaptive.v.a2', 10.0)
+        self.declare_parameter('adaptive.v.errors_threshold', 0.001)
+        self.declare_parameter('adaptive.v.innovation_threshold', 0.001)
+
+        self.declare_parameter('adaptive.w.a1', 4.0)
+        self.declare_parameter('adaptive.w.a2', 10.0)
+        self.declare_parameter('adaptive.w.errors_threshold', 0.0025)
+        self.declare_parameter('adaptive.w.innovation_threshold', 0.0025)
+
+        self.declare_parameter('adaptive.R_enc_scale', 0.01)
+        self.declare_parameter('adaptive.R_imu_scale', 0.02)
+
+    def load_params(self):
         self.vel_encoder_topic = self.get_parameter('vel_encoder_topic').value
         self.odometry_topic = self.get_parameter('odometry_topic').value
         self.imu_topic = self.get_parameter('imu_topic').value
+        self.mag_topic = self.get_parameter('mag_topic').value
+
+        # sigma point
+        self.alpha = self.get_parameter('sigmapoint.alpha').value
+        self.beta = self.get_parameter('sigmapoint.beta').value
+        self.kappa = self.get_parameter('sigmapoint.kappa').value
+
+        # syns time
+        self.time_syns_thres = self.get_parameter('time_syns_thres').value
+
+        # state
+        self.x_k = np.array(self.get_parameter('state.init_state').value, dtype=float)
+        self.x_k = self.x_k.reshape(-1,1)
+        self.P_k = np.array(self.get_parameter('state.P').value, dtype=float)
+        self.Q_k = np.array(self.get_parameter('state.Q').value, dtype=float)
+        self.P_k = self.P_k.reshape(5,5)
+        self.Q_k = self.Q_k.reshape(2,2)
+
+        self.motion_threshold = self.get_parameter('state.motion_threshold').value
+
+        #measurement offset
+        self.enc_pos_offset = np.array(self.get_parameter('encoder.pos_offset').value).reshape(-1,1)
+        self.enc_vel_offset = np.array(self.get_parameter('encoder.vel_offset').value).reshape(-1,1)
+
+        self.imu_pos_offset = np.array(self.get_parameter('imu.pos_offset').value).reshape(-1,1)
+        self.imu_vel_offset = np.array(self.get_parameter('imu.vel_offset').value).reshape(-1,1)
+
+        self.mag_pos_offset = np.array(self.get_parameter('mag.pos_offset').value).reshape(-1,1)
+
+        # measurement noise
+        self.R_enc = np.array(self.get_parameter('encoder.R').value, dtype=float)
+        self.R_imu = np.array(self.get_parameter('imu.R').value, dtype=float)
+        self.R_mag = np.array(self.get_parameter('mag.R').value, dtype=float)
+
+        #adaptiv
+        self.adaptive_v = {
+            "a1": self.get_parameter('adaptive.v.a1').value,
+            "a2": self.get_parameter('adaptive.v.a2').value,
+            "err_th": self.get_parameter('adaptive.v.errors_threshold').value,
+            "inn_th": self.get_parameter('adaptive.v.innovation_threshold').value
+        }
+
+        self.adaptive_w = {
+            "a1": self.get_parameter('adaptive.w.a1').value,
+            "a2": self.get_parameter('adaptive.w.a2').value,
+            "err_th": self.get_parameter('adaptive.w.errors_threshold').value,
+            "inn_th": self.get_parameter('adaptive.w.innovation_threshold').value
+        }
+
+        self.R_enc_scale = self.get_parameter('adaptive.R_enc_scale').value
+        self.R_imu_scale = self.get_parameter('adaptive.R_imu_scale').value    
 
     def init_UKF(self):
         # state vector length
@@ -53,10 +179,10 @@ class state_estimate(Node):
         self.n_w = 2
         self.L = self.n_x + self.n_w
 
-        # define sigma point parameter
-        self.alpha = 0.5
-        self.beta = 2
-        self.kappa = 0
+        # # define sigma point parameter
+        # self.alpha = 0.5
+        # self.beta = 2
+        # self.kappa = 0
         self.lam = self.alpha**2 * (self.L + self.kappa) - self.L
         self.scale = np.sqrt(self.L + self.lam)
         # sigma point weight
@@ -66,11 +192,11 @@ class state_estimate(Node):
         self.Wc[0] = self.Wm[0] + (1 - self.alpha**2 + self.beta)
 
         # define state vector
-        self.x_k = np.zeros((5, 1))   # [x, y, theta, v, w]
-        self.Q_k = np.diag([0.0001, 0.0001])
-        self.P_k = np.eye(5) * 0.00001
-        self.P_k[3,3] = 0.01
-        self.P_k[4,4] = 0.01
+        # self.x_k = np.zeros((5, 1))   # [x, y, theta, v, w]
+        # self.Q_k = np.diag([0.0001, 0.0001])
+        # self.P_k = np.eye(5) * 0.00001
+        # self.P_k[3,3] = 0.01
+        # self.P_k[4,4] = 0.01
         #define measurement vector
         self.z = np.zeros((8,1))
         self.measure_yaw_idx = (0,4,7)
@@ -96,44 +222,70 @@ class state_estimate(Node):
         # encoder
         self.create_subscription(TwistStamped, self.vel_encoder_topic, self.encoder_callback, qos)
         self.last_enc_msg = None
-        self.enc_odom = np.zeros((3,1)) # dead reckoning from encoder
+        self.enc_odom = np.zeros((3,1)) + self.enc_pos_offset # dead reckoning from encoder
         self.enc_buffer = deque(maxlen=20)
-        self.enc_R = np.array([10.0, 10.0, 0.1, 0.0025, 0.004])
+        self.enc_R = self.R_enc.copy()
         # imu
         self.create_subscription(Imu, self.imu_topic, self.imu_callback, qos)
         self.last_imu_msg =  None
-        self.imu_theta = 0.0
+        self.imu_theta = 0.0 + self.imu_pos_offset[0,0]
         self.imu_buffer = deque(maxlen=20)
-        self.imu_R = np.array([0.1, 0.0049]) 
+        self.imu_R = self.R_imu.copy()
         # mag
-        self.create_subscription(MagneticField, 'robot1/mag/data', self.mag_filt_cb, qos)
+        self.create_subscription(MagneticField, self.mag_topic, self.mag_filt_cb, qos)
         self.last_mag_msg = None
         self.mag_yaw_base = None
         self.mag_yaw = None
         self.mag_slope = 0.0
         self.mag_buffer = deque(maxlen=20)
-        self.mag_R = np.array([0.01])
+        self.mag_init_buffer = []
+        self.mag_R = self.R_mag.copy()
         # publish odommetry
         self.odom_pub = self.create_publisher(Odometry, self.odometry_topic, qos2)
 
     def encoder_callback(self, msg):
+        if self.mag_yaw_base is None:
+            return
         if self.last_enc_msg is None:
             self.last_enc_msg = msg
             return
         self.enc_buffer.append(msg)
 
     def mag_filt_cb(self, msg):
-        if self.last_mag_msg is None:
-            self.last_mag_msg = msg
-            self.mag_yaw_base = math.atan2(msg.magnetic_field.y, msg.magnetic_field.x)
-            self.mag_yaw = 0.0
-            self.imu_theta = 0.0
-            self.enc_odom[2,0] = 0.0
+        # lấy yaw từ mag
+        yaw = math.atan2(msg.magnetic_field.y, msg.magnetic_field.x)
+
+        # ===== phase 1: collect 10 samples =====
+        if self.mag_yaw_base is None:
+            self.mag_init_buffer.append(yaw)
+
+            if len(self.mag_init_buffer) < 10:
+                return
+
+            # ===== tính trung bình góc (QUAN TRỌNG) =====
+            sin_sum = sum(math.sin(a) for a in self.mag_init_buffer)
+            cos_sum = sum(math.cos(a) for a in self.mag_init_buffer)
+            self.mag_yaw_base = math.atan2(sin_sum, cos_sum)
+
+            self.get_logger().info(f"Mag yaw base initialized: {self.mag_yaw_base:.3f}")
+
+            # ===== init state =====
+            self.mag_yaw = 0.0 + self.mag_pos_offset[0,0]
+            self.imu_theta = 0.0 + self.imu_pos_offset[0,0]
+            self.enc_odom[2,0] = 0.0 + self.enc_pos_offset[2,0]
             self.x_k[2,0] = 0.0
+            self.last_mag_msg = msg
             return
+
+        # ===== phase 2: normal operation =====
+        yaw_rel = angle_normalize(yaw - self.mag_yaw_base)
+        self.mag_yaw = yaw_rel + self.mag_pos_offset[0,0]
         self.mag_buffer.append(msg)
 
     def imu_callback(self, msg):
+        if self.mag_yaw_base is None:
+            return
+
         if self.last_imu_msg is None:
             self.last_imu_msg = msg
             return
@@ -191,19 +343,19 @@ class state_estimate(Node):
 
         match min_sensor_name:
             case "IMU":
-                if enc_flag and t_enc - t_imu > 0.01:
+                if enc_flag and t_enc - t_imu > self.time_syns_thres:
                     enc_flag = False
-                if mag_flag and t_mag - t_imu > 0.01:
+                if mag_flag and t_mag - t_imu > self.time_syns_thres:
                     mag_flag = False
             case "Encoder":
-                if imu_flag and t_imu - t_enc > 0.01:
+                if imu_flag and t_imu - t_enc > self.time_syns_thres:
                     imu_flag = False
-                if mag_flag and t_mag - t_enc > 0.01:
+                if mag_flag and t_mag - t_enc > self.time_syns_thres:
                     mag_flag = False
             case "Mag":
-                if imu_flag and t_imu - t_mag > 0.01:
+                if imu_flag and t_imu - t_mag > self.time_syns_thres:
                     imu_flag = False
-                if enc_flag and t_enc - t_mag > 0.01:
+                if enc_flag and t_enc - t_mag > self.time_syns_thres:
                     enc_flag = False
             case None:                pass
 
@@ -214,7 +366,7 @@ class state_estimate(Node):
 
             angular_vel_yaw = float(imu_msg.angular_velocity.z)
             # angular_vel_yaw =  angular_vel_yaw #- 0.004
-            self.imu_theta += (angular_vel_yaw-0.0033)*imu_dt
+            self.imu_theta += (angular_vel_yaw-self.imu_vel_offset[0,0])*imu_dt
             imu_theta = angle_normalize(self.imu_theta)
 
             self.imu_buffer.popleft()
@@ -302,8 +454,8 @@ class state_estimate(Node):
 
         # Predic
         Q = self.Q_k.copy()
-        Q[0,0] = Q[0,0] + 4.0*max(0.0, -10*1e-4 + ((enc_v- self.x_k[3,0])**2)) + 10*max(0.0, -10*1e-4+ ((enc_v - self.last_enc_msg.twist.linear.x)**2))
-        Q[1,1] = Q[1,1] + 4.0*max(0.0, -25*1e-4 + ((0.5*(enc_w + angular_vel_yaw) - self.x_k[4,0])**2)) + 10*max(0.0, -25*1e-4 + ((0.5*(enc_w - self.last_enc_msg.twist.angular.z))**2 + (0.5*(angular_vel_yaw - self.last_imu_msg.angular_velocity.z))**2))
+        Q[0,0] = Q[0,0] + self.adaptive_v["a1"]*max(0.0, -1.0*self.adaptive_v['err_th'] + ((enc_v- self.x_k[3,0])**2)) + self.adaptive_v['a2']*max(0.0, -1.0*self.adaptive_v['inn_th'] + ((enc_v - self.last_enc_msg.twist.linear.x)**2))
+        Q[1,1] = Q[1,1] + self.adaptive_w["a1"]*max(0.0, -1.0*self.adaptive_w['err_th'] + ((0.5*(enc_w + angular_vel_yaw) - self.x_k[4,0])**2)) + self.adaptive_w['a2']*max(0.0, -1.0*self.adaptive_w['inn_th'] + ((0.5*(enc_w - self.last_enc_msg.twist.angular.z))**2 + (0.5*(angular_vel_yaw - self.last_imu_msg.angular_velocity.z))**2))
   
         predict_dt = t_min - self.odom_time
         self.UKF_prediction(predict_dt, Q)
@@ -322,33 +474,33 @@ class state_estimate(Node):
         self.z[7,0] = mag_yaw 
 
         imu_R = self.imu_R.copy()
-        imu_R[0] = imu_R[0] + (0.02*math.fabs(self.imu_theta))**2
-        if not imu_flag:
-            imu_R[0] = imu_R[0] + 0.0001
+        imu_R[0] = imu_R[0] + (self.R_imu_scale*math.fabs(self.imu_theta))**2
+        # if not imu_flag:
+        #     imu_R[0] = imu_R[0] + 0.0001
         enc_R = self.enc_R.copy()
-        enc_R[0] = enc_R[0] + (0.01*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
-        enc_R[1] = enc_R[1] + (0.01*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
-        enc_R[2] = enc_R[2] + (0.01*math.fabs(self.enc_odom[2,0]))**2
-        if not enc_flag:
-            enc_R[0] = enc_R[0] + 0.0001
-            enc_R[1] = enc_R[1] + 0.0001
-            enc_R[2] = enc_R[2] + 0.0001
+        enc_R[0] = enc_R[0] + ((self.R_enc_scale**2)*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
+        enc_R[1] = enc_R[1] + ((self.R_enc_scale**2)*(math.fabs(self.enc_odom[0,0])**2 + math.fabs(self.enc_odom[1,0])**2))
+        enc_R[2] = enc_R[2] + (self.R_enc_scale*math.fabs(self.enc_odom[2,0]))**2
+        # if not enc_flag:
+        #     enc_R[0] = enc_R[0] + 0.0001
+        #     enc_R[1] = enc_R[1] + 0.0001
+        #     enc_R[2] = enc_R[2] + 0.0001
         mag_R = self.mag_R.copy()
-        if not mag_flag:
-            mag_R[0] = mag_R[0] + 0.0001
+        # if not mag_flag:
+        #     mag_R[0] = mag_R[0] + 0.0001
         R = np.diag([imu_R[0], imu_R[1], enc_R[0], enc_R[1], enc_R[2], self.enc_R[3], self.enc_R[4], mag_R[0]])
                 
         self.UKF_update(self.z, self.H, R, (0,4,7))
     
         ros_stamp = Time(seconds=self.odom_time).to_msg()
         self.publish_odom(ros_stamp)
-        self.get_logger().info("Odom published: x,y,theta = {:.4f}, {:.4f}, {:.4f}".format(
-            self.x_k[0,0], self.x_k[1,0], self.x_k[2,0]
-        ))
-        self.get_logger().info("enc_buffer length: {}, imu_buffer length: {}, mag_buffer length: {}".format(len(self.enc_buffer)+enc_flag, len(self.imu_buffer)+imu_flag, len(self.mag_buffer)+mag_flag))
+        # self.get_logger().info("Odom published: x,y,theta = {:.4f}, {:.4f}, {:.4f}".format(
+        #     self.x_k[0,0], self.x_k[1,0], self.x_k[2,0]
+        # ))
+        # self.get_logger().info("enc_buffer length: {}, imu_buffer length: {}, mag_buffer length: {}".format(len(self.enc_buffer)+enc_flag, len(self.imu_buffer)+imu_flag, len(self.mag_buffer)+mag_flag))
 
-        # if(self.enc_buffer or self.imu_buffer):
-        #     self.ST_process()
+        if(self.enc_buffer or self.imu_buffer):
+            self.ST_process()
 
     def generate_sigma_points(self, x, P, Q):
         x_aug = np.zeros((self.L, 1))
@@ -375,8 +527,8 @@ class state_estimate(Node):
         v = sigma[3, :] + sigma[5, :]
         w = sigma[4, :] + sigma[6, :]
 
-        v = np.where(np.abs(v) < 0.05, 0, v)
-        w = np.where(np.abs(w) < 0.05, 0, w)
+        v = np.where(np.abs(v) < self.motion_threshold, 0, v)
+        w = np.where(np.abs(w) < self.motion_threshold, 0, w)
 
         theta = sigma[2, :]
         sin_theta = np.sin(theta)

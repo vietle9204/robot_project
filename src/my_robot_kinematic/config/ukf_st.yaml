@@ -1,0 +1,65 @@
+state_estimate_UKF:
+  ros__parameters:
+    vel_encoder_topic: /robot1/vel_encoder/data
+    odometry_topic: /odometry/data
+    imu_topic: /robot1/imu/data
+    mag_topic: /robot1/mag/data
+
+    odom_topic: /odometry/data
+    frame_id: odom
+    child_frame_id: base_link
+
+
+    sigmapoint:
+      alpha: 0.5
+      beta: 2.0
+      kappa: 0.0
+
+    time_syns_thres: 0.01
+
+    state:
+      init_state: [0.0, 0.0, 0.0, 0.0, 0.0]   #x
+
+      P:  [0.0001, 0.0000, 0.0000, 0.0, 0.0,
+           0.0000, 0.0001, 0.0000, 0.0, 0.0,
+           0.0000, 0.0000, 0.0001, 0.0, 0.0,
+           0.0000, 0.0000, 0.0000, 0.1, 0.0,
+           0.0000, 0.0000, 0.0000, 0.0, 0.1]
+
+      Q:  [0.0001, 0.0000,
+           0.0000, 0.0001]
+
+      motion_threshold: 0.05
+
+    encoder:
+      pos_offset: [0.0, 0.0, 0.0]
+      vel_offset: [0.0, 0.0]
+
+      R:  [10.0, 10.0, 0.1, 0.0025, 0.004]
+
+    imu:
+      pos_offset: [0.0]       # yaw
+      vel_offset: [0.0033]       # w
+
+      R:  [0.1, 0.0049]
+
+    mag:
+      pos_offset: [0.0]       # yaw
+
+      R:  [0.01]
+
+    adaptive:
+      v:
+        a1: 4.0
+        a2: 10.0
+        errors_threshold: 0.001
+        innovation_threshold: 0.001
+      w:
+        a1: 4.0
+        a2: 10.0
+        errors_threshold: 0.0025
+        innovation_threshold: 0.0025
+
+      R_enc_scale: 0.01
+      R_imu_scale: 0.02
+
