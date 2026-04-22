@@ -391,12 +391,22 @@ class state_estimate(Node):
 
             enc_v = float(enc_msg.twist.linear.x)
             enc_w = float(enc_msg.twist.angular.z)
-            self.enc_odom[0,0] += enc_v*math.cos(self.enc_odom[2,0])*enc_dt
-            self.enc_odom[1,0] += enc_v*math.sin(self.enc_odom[2,0])*enc_dt
+            if math.fabs(enc_w) < 0.001:
+                self.enc_odom[0,0] += enc_v*math.cos(self.enc_odom[2,0])*enc_dt
+                self.enc_odom[1,0] += enc_v*math.sin(self.enc_odom[2,0])*enc_dt
+                self.enc_odom[2,0] += enc_w*enc_dt
+            else:
+                sin_theta = math.sin(self.enc_odom[2,0])
+                cos_theta = math.cos(self.enc_odom[2,0])
+                self.enc_odom[2,0] += enc_w*enc_dt
+                sin_newtheta = math.sin(self.enc_odom[2,0])
+                cos_newtheta = math.cos(self.enc_odom[2,0])
+                self.enc_odom[0,0] += (enc_v / enc_w) * (sin_newtheta - sin_theta)
+                self.enc_odom[1,0] += -(enc_v / enc_w) * (cos_newtheta - cos_theta)
             # if math.fabs(enc_w) > 0.0005:
             #     self.enc_odom[2,0] += (enc_w + 0.0001)*enc_dt
             # else:
-            self.enc_odom[2,0] += enc_w*enc_dt
+            # self.enc_odom[2,0] += enc_w*enc_dt
 
             enc_odom = self.enc_odom.copy()
             enc_odom[2,0] = angle_normalize(enc_odom[2,0])
