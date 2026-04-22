@@ -499,8 +499,8 @@ class state_estimate(Node):
         # ))
         # self.get_logger().info("enc_buffer length: {}, imu_buffer length: {}, mag_buffer length: {}".format(len(self.enc_buffer)+enc_flag, len(self.imu_buffer)+imu_flag, len(self.mag_buffer)+mag_flag))
 
-        if(self.enc_buffer or self.imu_buffer):
-            self.ST_process()
+        # if(self.enc_buffer or self.imu_buffer):
+        #     self.ST_process()
 
     def generate_sigma_points(self, x, P, Q):
         x_aug = np.zeros((self.L, 1))
