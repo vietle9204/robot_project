@@ -79,7 +79,7 @@ class OccupancyMapping(Node):
         self.ts.registerCallback(self.sync_cb)
 
         # ===== Publisher =====
-        self.map_pub = self.create_publisher(OccupancyGrid, '/map', qos_map)
+        self.map_pub = self.create_publisher(OccupancyGrid, '/ekf_slam/2map', qos_map)
 
         self.get_logger().info("Occupancy Mapping FULL Started")
 
