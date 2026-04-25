@@ -282,12 +282,12 @@ class UKFSLAM(Node):
 
         # odom_covriance 3x3 [x, y, yaw]
 
-        c = msg.pose.covariance
-        curr_odom_cov = np.array([
-            [c[0],  c[1],  c[5]],
-            [c[6],  c[7],  c[11]],
-            [c[30], c[31], c[35]]
-        ])
+        # c = msg.pose.covariance
+        # curr_odom_cov = np.array([
+        #     [c[0],  c[1],  c[5]],
+        #     [c[6],  c[7],  c[11]],
+        #     [c[30], c[31], c[35]]
+        # ])
         
         # control corvariance 2x2 [v, w]
         # cv = msg.twist.covariance
@@ -301,7 +301,7 @@ class UKFSLAM(Node):
         # kiem tra khoi tao
         if self.last_predict_time is None:
             self.last_odom = [curr_x, curr_y, curr_yaw]
-            self.last_odom_cov = curr_odom_cov
+            # self.last_odom_cov = curr_odom_cov
             # self.last_vel = [v, w]
             # self.last_vel_cov = curr_vel_cov
             self.last_predict_time = curr_time
@@ -338,18 +338,17 @@ class UKFSLAM(Node):
             self.Q_b**2 * math.fabs(delta_robot[2,0]**2) + 1e-15   # Nhiễu theta
         ])
 
-        Q_robot = (curr_odom_cov - self.last_odom_cov)
+        # Q_robot = (curr_odom_cov - self.last_odom_cov)
         # Q_robot[Q_robot < 0] = 1e-15
-        # Đảm bảo Q không bị âm do nhiễu số học
-        Q_robot = R.T @  Q_robot @ R + Q_motion
-        Q_robot[Q_robot < 0] = 1e-15
+        # Q_robot = R.T @  Q_robot @ R + Q_motion
+        # Q_robot[Q_robot < 0] = 1e-15
         
 
-        self.predict(delta_robot, Q_robot)
+        self.predict(delta_robot, Q_motion)
         # self.publish_pose(msg.header.stamp)
         # 
         self.last_odom = [curr_x, curr_y, curr_yaw]
-        self.last_odom_cov = curr_odom_cov
+        # self.last_odom_cov = curr_odom_cov
         self.last_predict_time = curr_time
         # self.last_vel = [v, w]
         # self.last_vel_cov = curr_vel_cov
