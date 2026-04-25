@@ -56,18 +56,23 @@ def quaternion_from_euler(roll, pitch, yaw):
 
 class UKFSLAM(Node):
     def __init__(self):
-        super().__init__("ekf_slam_node")
+        super().__init__("ekf_slam")
+
+        # Declare Topic Name Parameters
+        self.declare_param()
+        # load parameter
+        self.load_parameters()
     
         # State vector [xr, yr, theta, m1x, m1y, m2x, m2y, ...]
         self.x = np.zeros((3,1))
         # Covariance matrix
-        self.P = np.eye(3) * 1e-6
+        self.P = self.P_base
         # Noise
-        self.Q = np.eye(3) * 1e-2  # motion noise
-        self.R = np.diag([0.0036, 0.0049])        # measurement noise
+        # self.Q = np.eye(3) * 1e-2  # motion noise
+        self.R = np.diag(self.R)        # measurement noise
         # lamarks
         self.num_landmarks = 0
-        self.max_landmarks = 150    # giới hạn số landmark
+        self.max_landmarks = self.max_landmark    # giới hạn số landmark
         self.landmark_score = []     # độ tin cậy
 
         # measurements in current step
@@ -77,8 +82,7 @@ class UKFSLAM(Node):
         self.new_features = []
 
         #UKF
-        self.alpha, self.kappa, self.beta = 0.015, 0.0, 2.0
-
+        # self.alpha, self.kappa, self.beta = 0.015, 0.0, 2.0
         self.w_m, self.w_c, self.sigma = None, None, None
 
         #time parameter
@@ -94,19 +98,94 @@ class UKFSLAM(Node):
         self.ros_init()
 
     def declare_param(self):
+        # Topics
         self.declare_parameter('scan_topic', '/robot1/scan')
         self.declare_parameter('odom_topic', '/odometry/data')
 
+        # Sigma points
+        self.declare_parameter('sigmapoint.alpha', 0.015)
+        self.declare_parameter('sigmapoint.beta', 2.0)
+        self.declare_parameter('sigmapoint.kappa', 0.0)
+
+        # Covariance
+        self.declare_parameter('P_base', [1e-7]*9)
+
+        # Process noise
+        self.declare_parameter('Q_scale.a', 0.06)
+        self.declare_parameter('Q_scale.b', 0.04)
+
+        # Measurement noise
+        self.declare_parameter('R', [0.0036, 0.0049])
+
+        # SLAM settings
+        self.declare_parameter('max_landmark', 150)
+        self.declare_parameter('time_syns_period', 0.018)
+        self.declare_parameter('new_landmark_corv_base', 0.0009)
+
+        # Scan segmentation
+        self.declare_parameter('segment_scan.range_thres', 0.2)
+        self.declare_parameter('segment_scan.min_point', 9)
+
+        # Feature extraction
+        self.declare_parameter('extract_curvature_points.neib_number', 5)
+        self.declare_parameter('extract_curvature_points.curvature_threshold', 0.185)
+        self.declare_parameter('extract_curvature_points.range_min', 0.5)
+        self.declare_parameter('extract_curvature_points.range_max', 10.0)
+
+        # Clustering
+        self.declare_parameter('cluster_future.angle_threshold', 0.02)
+
+        # Data association
+        self.declare_parameter('association.chi2_threshold', 5.99)
+        self.declare_parameter('association.range_raw_thes', 2.0)
+        self.declare_parameter('association.angle_raw_thes', 0.5)
+        
+
     def load_parameters(self):
-        # Topic names
+        # Topics
         self.scan_topic = self.get_parameter('scan_topic').value
         self.odom_topic = self.get_parameter('odom_topic').value
 
+        # Sigma points
+        self.alpha = self.get_parameter('sigmapoint.alpha').value
+        self.beta = self.get_parameter('sigmapoint.beta').value
+        self.kappa = self.get_parameter('sigmapoint.kappa').value
+
+        # Covariance
+        P_list = self.get_parameter('P_base').value
+        self.P_base = np.array(P_list, dtype=float).reshape(3, 3)
+
+        # Process noise
+        self.Q_a = self.get_parameter('Q_scale.a').value
+        self.Q_b = self.get_parameter('Q_scale.b').value
+
+        # Measurement noise
+        self.R = self.get_parameter('R').value
+
+        # SLAM settings
+        self.max_landmark = self.get_parameter('max_landmark').value
+        self.time_syns_period = self.get_parameter('time_syns_period').value
+        self.new_landmark_corv_base = self.get_parameter('new_landmark_corv_base').value
+
+        # Scan segmentation
+        self.range_thres = self.get_parameter('segment_scan.range_thres').value
+        self.min_point = self.get_parameter('segment_scan.min_point').value
+
+        # Feature extraction
+        self.neib_number = self.get_parameter('extract_curvature_points.neib_number').value
+        self.curvature_th = self.get_parameter('extract_curvature_points.curvature_threshold').value
+        self.range_min = self.get_parameter('extract_curvature_points.range_min').value
+        self.range_max = self.get_parameter('extract_curvature_points.range_max').value
+
+        # Clustering
+        self.angle_th = self.get_parameter('cluster_future.angle_threshold').value
+
+        # Association
+        self.chi2_th = self.get_parameter('association.chi2_threshold').value
+        self.range_raw_th = self.get_parameter('association.range_raw_thes').value
+        self.angle_raw_th = self.get_parameter('association.angle_raw_thes').value
+
     def ros_init(self):
-        # Declare Topic Name Parameters
-        self.declare_param()
-        # load parameter
-        self.load_parameters()
         # Subcriptions
         # self.create_subscription(Odometry, self.odom_topic, self.odom_cb, qos)
         # self.create_subscription(LaserScan, self.scan_topic, self.scan_cb, qos)
@@ -115,7 +194,7 @@ class UKFSLAM(Node):
         self.ts = ApproximateTimeSynchronizer(
             [self.odom_sub, self.scan_sub],
             queue_size=30,
-            slop=0.018  # sai số thời gian cho phép (30ms)
+            slop=self.time_syns_period  # sai số thời gian cho phép (30ms)
         )
 
         self.ts.registerCallback(self.sync_cb)
@@ -203,12 +282,12 @@ class UKFSLAM(Node):
 
         # odom_covriance 3x3 [x, y, yaw]
 
-        # c = msg.pose.covariance
-        # curr_odom_cov = np.array([
-        #     [c[0],  c[1],  c[5]],
-        #     [c[6],  c[7],  c[11]],
-        #     [c[30], c[31], c[35]]
-        # ])
+        c = msg.pose.covariance
+        curr_odom_cov = np.array([
+            [c[0],  c[1],  c[5]],
+            [c[6],  c[7],  c[11]],
+            [c[30], c[31], c[35]]
+        ])
         
         # control corvariance 2x2 [v, w]
         # cv = msg.twist.covariance
@@ -222,7 +301,7 @@ class UKFSLAM(Node):
         # kiem tra khoi tao
         if self.last_predict_time is None:
             self.last_odom = [curr_x, curr_y, curr_yaw]
-            # self.last_odom_cov = curr_odom_cov
+            self.last_odom_cov = curr_odom_cov
             # self.last_vel = [v, w]
             # self.last_vel_cov = curr_vel_cov
             self.last_predict_time = curr_time
@@ -230,34 +309,47 @@ class UKFSLAM(Node):
 
         # compute timestamp
         # dt = curr_time - self.last_predict_time
+        R = np.array([
+            [math.cos(self.last_odom[2]), math.sin(self.last_odom[2]), 0],
+            [-math.sin(self.last_odom[2]),  math.cos(self.last_odom[2]), 0],
+            [0,      0,     1]
+        ])
         
         # Delta Pose 
         dx = curr_x - self.last_odom[0]
         dy = curr_y - self.last_odom[1]
         raw_dtheta = curr_yaw - self.last_odom[2]
         dtheta = math.atan2(math.sin(raw_dtheta), math.cos(raw_dtheta))
-
+                
         # --- robot_motion ---
-        dx_robot =  math.cos(self.last_odom[2]) * dx + math.sin(self.last_odom[2]) * dy
-        dy_robot = -math.sin(self.last_odom[2]) * dx + math.cos(self.last_odom[2]) * dy
-        # dy_robot = 0.0
+        # dx_robot =  math.cos(self.last_odom[2]) * dx + math.sin(self.last_odom[2]) * dy
+        # dy_robot = -math.sin(self.last_odom[2]) * dx + math.cos(self.last_odom[2]) * dy
+        # dy_robot = 0.0s
+        delta_robot = R @ np.array([[dx], [dy], [dtheta]])
 
-        if abs(dx_robot) < 0.001 and abs(dy_robot) < 0.001 and abs(dtheta) < 0.001:
-            dx_robot, dy_robot, dtheta = 1e-15, 1e-15, 1e-15
+        if abs(delta_robot[0,0]) < 0.001 and abs(delta_robot[1,0]) < 0.001 and abs(delta_robot[2,0]) < 0.001:
+            delta_robot[0,0], delta_robot[1,0], delta_robot[2,0] = 1e-15, 1e-15, 1e-15
         
         # Q_incremental: 
-        dist = math.sqrt(dx_robot**2 + dy_robot**2)
-        Q_robot = np.diag([
-            0.0036 * dist + 1e-15,        # Nhiễu x
-            0.0036 * dist + 1e-15,        # Nhiễu y
-            0.0016 * math.fabs(dtheta**2) + 1e-15   # Nhiễu theta
+        dist = math.sqrt(delta_robot[0,0]**2 + delta_robot[1,0]**2)
+        Q_motion = np.diag([
+            self.Q_a**2 * dist + 1e-15,        # Nhiễu x
+            self.Q_a**2 * dist + 1e-15,        # Nhiễu y
+            self.Q_b**2 * math.fabs(delta_robot[2,0]**2) + 1e-15   # Nhiễu theta
         ])
- 
-        self.predict((dx_robot, dy_robot, dtheta), Q_robot)
+
+        Q_robot = (curr_odom_cov - self.last_odom_cov)
+        # Q_robot[Q_robot < 0] = 1e-15
+        # Đảm bảo Q không bị âm do nhiễu số học
+        Q_robot = R.T @  Q_robot @ R + Q_motion
+        Q_robot[Q_robot < 0] = 1e-15
+        
+
+        self.predict(delta_robot, Q_robot)
         # self.publish_pose(msg.header.stamp)
         # 
         self.last_odom = [curr_x, curr_y, curr_yaw]
-        # self.last_odom_cov = curr_odom_cov
+        self.last_odom_cov = curr_odom_cov
         self.last_predict_time = curr_time
         # self.last_vel = [v, w]
         # self.last_vel_cov = curr_vel_cov
@@ -286,7 +378,7 @@ class UKFSLAM(Node):
         z_hat, S, Pxz = pred_res
 
         # 2. Data association (Hàm này sẽ lấp đầy self.z và self.new_features)
-        self.association(features, z_hat, S)
+        self.association(features, z_hat, S, chi2_threshold=self.chi2_th)
 
         # 3. UKF BATCH UPDATE
         batch_obs = [(r, b, lm_id) for (r, b), lm_id in zip(self.z, self.z_lm_ids)]
@@ -583,7 +675,7 @@ class UKFSLAM(Node):
         # B. Tính hiệp phương sai tự thân của Landmark mới (Uncertainty)
         # P_ll = Gr * P_robot * Gr.T + Gz * R_obs * Gz.T
         P_robot_only = self.P[0:3, 0:3]
-        P_ll = Gr @ P_robot_only @ Gr.T + Gz @ R_obs @ Gz.T + 9.0*1e-4*np.eye(2)
+        P_ll = Gr @ P_robot_only @ Gr.T + Gz @ R_obs @ Gz.T + self.new_landmark_corv_base*np.eye(2)
 
         # C. Ghép vào ma trận P mới
         P_new = np.zeros((n_old + 2, n_old + 2))
@@ -652,7 +744,7 @@ class UKFSLAM(Node):
         point_cloud[:,3] = angles
         point_cloud[:,4] = valid_indices
 
-        segment_clusters = self.segment_scan(point_cloud, 0.2, 9)
+        segment_clusters = self.segment_scan(point_cloud, self.range_thres, self.min_point)
 
         # 2. Chạy trích xuất đặc trưng cho TỪNG cụm
         # clusters = []
@@ -673,10 +765,10 @@ class UKFSLAM(Node):
             self.extract_thread.submit(
                 self.extract_curvature_points,
                 point_cluster,
-                5,          # k
-                0.185,        # curvature_threshold
-                0.5,        # range_min
-                10.0        # range_max
+                self.neib_number,          # k
+                self.curvature_th,        # curvature_threshold
+                self.range_min,        # range_min
+                self.range_max        # range_max
             )
             for point_cluster in segment_clusters
         ]
@@ -696,7 +788,7 @@ class UKFSLAM(Node):
             return []
         
         clusters = self.cluster_features(curv_pts,
-                     angle_thresh=0.03)
+                     self.angle_th)
 
         measurements = [self.cluster_to_feature(c) for c in clusters]
         return measurements
@@ -1010,7 +1102,7 @@ class UKFSLAM(Node):
             v[:,1] = np.arctan2(np.sin(v[:,1]), np.cos(v[:,1]))
 
             # --- gating thô ---
-            mask = (np.abs(v[:,0]) < 2.0) & (np.abs(v[:,1]) < np.pi/6)
+            mask = (np.abs(v[:,0]) < self.range_raw_th) & (np.abs(v[:,1]) < self.angle_raw_th)
             valid_ids = np.where(mask)[0]
 
             if len(valid_ids) == 0:

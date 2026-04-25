@@ -59,9 +59,9 @@ class UKFSLAM(Node):
         super().__init__("ekf_slam_node")
     
         # State vector [xr, yr, theta, m1x, m1y, m2x, m2y, ...]
-        self.x = np.ones((3,1)) * 1e-6
+        self.x = np.zeros((3,1))
         # Covariance matrix
-        self.P = np.eye(3) * 1e-3
+        self.P = np.eye(3) * 1e-9
         # Noise
         self.Q = np.eye(3) * 1e-3  # motion noise
         self.R = np.diag([0.0025, 0.0036])        # measurement noise
@@ -77,7 +77,7 @@ class UKFSLAM(Node):
         self.new_features = []
 
         #UKF
-        self.alpha, self.kappa, self.beta = 0.01, 0.0, 2.0
+        self.alpha, self.kappa, self.beta = 0.015, 0.0, 2.0
 
         #time parameter
         self.last_odom = None      #[x, y, theta]
@@ -200,12 +200,13 @@ class UKFSLAM(Node):
         # w = msg.twist.twist.angular.z
 
         # odom_covriance 3x3 [x, y, yaw]
-        # c = msg.pose.covariance
-        # curr_odom_cov = np.array([
-        #     [c[0],  c[1],  c[5]],
-        #     [c[6],  c[7],  c[11]],
-        #     [c[30], c[31], c[35]]
-        # ])
+
+        c = msg.pose.covariance
+        curr_odom_cov = np.array([
+            [c[0],  c[1],  c[5]],
+            [c[6],  c[7],  c[11]],
+            [c[30], c[31], c[35]]
+        ])
         
         # control corvariance 2x2 [v, w]
         # cv = msg.twist.covariance
@@ -219,7 +220,7 @@ class UKFSLAM(Node):
         # kiem tra khoi tao
         if self.last_predict_time is None:
             self.last_odom = [curr_x, curr_y, curr_yaw]
-            # self.last_odom_cov = curr_odom_cov
+            self.last_odom_cov = curr_odom_cov
             # self.last_vel = [v, w]
             # self.last_vel_cov = curr_vel_cov
             self.last_predict_time = curr_time
@@ -235,34 +236,38 @@ class UKFSLAM(Node):
         dtheta = math.atan2(math.sin(raw_dtheta), math.cos(raw_dtheta))
 
         # --- robot_motion ---
-        # R = np.array([
-        #     [math.cos(self.last_odom[2]), -math.sin(self.last_odom[2]), 0],
-        #     [math.sin(self.last_odom[2]),  math.cos(self.last_odom[2]), 0],
-        #     [0,      0,     1]
-        # ])
-        # delta_robot = R.T @ np.array([[dx], [dy], [dtheta]])
         dx_robot =  math.cos(self.last_odom[2]) * dx + math.sin(self.last_odom[2]) * dy
         dy_robot = -math.sin(self.last_odom[2]) * dx + math.cos(self.last_odom[2]) * dy
-        dy_robot = 0.0
-        # if abs(dx_robot) < 0.0005 and abs(dy_robot) < 0.0005 and abs(dtheta) < 0.0005:
-        #     dx_robot, dy_robot, dtheta = np.array([[1e-15], [1e-15], [1e-15]])
+        # dy_robot = 0.0
 
+        if abs(dx_robot) < 0.001 and abs(dy_robot) < 0.001 and abs(dtheta) < 0.001:
+            dx_robot, dy_robot, dtheta = 1e-15, 1e-15, 1e-15
+        
         # Q_incremental: 
         dist = math.sqrt(dx_robot**2 + dy_robot**2)
-        Q_robot = np.diag([
-            0.0081 * dist + 1e-12,        # Nhiễu x
-            0.0081 * dist + 1e-12,        # Nhiễu y
-            0.0081* math.fabs(dtheta**2) + 1e-12  # Nhiễu theta
+        Q_motion = np.diag([
+            self.Q_a**2 * dist + 1e-15,        # Nhiễu x
+            self.Q_a**2 * dist + 1e-15,        # Nhiễu y
+            self.Q_b**2 * math.fabs(dtheta**2) + 1e-15   # Nhiễu theta
         ])
 
-        # # Thực hiện phép biến đổi (Propagation)
-        # Q_robot = R.T @ curr_odom_cov @ R
- 
-        self.predict_state((dx_robot, dy_robot, dtheta), Q_robot)
+        R = np.array([
+            [math.cos(self.last_odom[2]), math.sin(self.last_odom[2]), 0],
+            [-math.sin(self.last_odom[2]),  math.cos(self.last_odom[2]), 0],
+            [0,      0,     1]
+        ])
+        Q_robot = (curr_odom_cov - self.last_odom_cov)
+        # Q_robot[Q_robot < 0] = 1e-15
+        # Đảm bảo Q không bị âm do nhiễu số học
+        Q_robot = R.T @  Q_robot @ R + Q_motion
+        Q_robot[Q_robot < 0] = 1e-15
+        
+
+        self.predict((dx_robot, dy_robot, dtheta), Q_robot)
         # self.publish_pose(msg.header.stamp)
         # 
         self.last_odom = [curr_x, curr_y, curr_yaw]
-        # self.last_odom_cov = curr_odom_cov
+        self.last_odom_cov = curr_odom_cov
         self.last_predict_time = curr_time
         # self.last_vel = [v, w]
         # self.last_vel_cov = curr_vel_cov
@@ -370,7 +375,7 @@ class UKFSLAM(Node):
         n = x.shape[0]
 
         # generate sigma points
-        w_m, w_c, sigma_points = self.generate_sigma_points(x, P, 0.05)
+        w_m, w_c, sigma_points = self.generate_sigma_points(x, P, 0.0015)
         # -----------Dự báo từng Sigma Point qua Motion Model---------
         sigmas_f = np.copy(sigma_points) 
         pts = sigma_points[:, 2] 
@@ -436,7 +441,7 @@ class UKFSLAM(Node):
         n = x.shape[0]
 
         # generate sigma points
-        w_m, w_c, sigma_points = self.generate_sigma_points(x, P, 0.0001)
+        w_m, w_c, sigma_points = self.generate_sigma_points(x, P, 0.0015)
         # -----------Dự báo từng Sigma Point qua Motion Model---------
         Z_sigmas = np.zeros((2*n + 1, 2))   
         z_pred = np.zeros((2, 1))
@@ -474,7 +479,7 @@ class UKFSLAM(Node):
             dz[1,0] = normalize_angle(dz[1,0])
 
             P_zx += w_c[i] * (dz @ dx.T)    # (2x1)(1x5) → (2x5)
-            P_zz += w_c[i] * (dz @ dz.T)    # 2x2
+            P_zz += w_c[i] * (dz @ dz.T)    # 2x2 
             P_xx += w_c[i] * (dx @ dx.T)    # 5x5
 
         A = np.linalg.solve(P_xx.T, P_zx.T).T
@@ -662,7 +667,7 @@ class UKFSLAM(Node):
         point_cloud[:,3] = angles
         point_cloud[:,4] = valid_indices
 
-        segment_clusters = self.segment_scan(point_cloud, 0.3, 3)
+        segment_clusters = self.segment_scan(point_cloud, 0.2, 9)
 
         # 2. Chạy trích xuất đặc trưng cho TỪNG cụm
         # clusters = []
@@ -706,7 +711,7 @@ class UKFSLAM(Node):
             return []
         
         clusters = self.cluster_features(curv_pts,
-                     angle_thresh=0.02)
+                     angle_thresh=0.03)
 
         measurements = [self.cluster_to_feature(c) for c in clusters]
         return measurements
@@ -1020,7 +1025,7 @@ class UKFSLAM(Node):
             v[:,1] = np.arctan2(np.sin(v[:,1]), np.cos(v[:,1]))
 
             # --- gating thô ---
-            mask = (np.abs(v[:,0]) < 2.0) & (np.abs(v[:,1]) < np.pi/6)
+            mask = (np.abs(v[:,0]) < 2.0) & (np.abs(v[:,1]) < 0.5)
             valid_ids = np.where(mask)[0]
 
             if len(valid_ids) == 0:
@@ -1071,9 +1076,7 @@ class UKFSLAM(Node):
             else:
                 # Trả về cả z và R để khởi tạo landmark mới chính xác hơn
                 self.new_features.append((z_obs, R_obs))
-
-
-
+                
 def main(args=None):
     rclpy.init(args=args)
 

@@ -83,7 +83,7 @@ class AStarNode(Node):
 
         self.create_subscription(
             OccupancyGrid,
-            '/map',
+            'ekf_slam/binary_map',
             self.map_callback,
             qos
         )
