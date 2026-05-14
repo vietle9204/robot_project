@@ -80,7 +80,7 @@ class ImuFilterNode(Node):
         super().__init__('imu_butterworth_filter')
 
         # --------------- PARAMETER ----------------
-        self.declare_parameter("fc", 3.0)   # Hz
+        self.declare_parameter("fc", 4.0)   # Hz
         self.declare_parameter("fs", 13.0)  # Hz (raw IMU rate)
 
         fc = self.get_parameter("fc").value

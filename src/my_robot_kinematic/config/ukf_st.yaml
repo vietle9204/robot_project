@@ -2,6 +2,8 @@ state_estimate_UKF:
   ros__parameters:
     vel_encoder_topic: /robot1/vel_encoder/data
     odometry_topic: /odometry/data
+    # imu_topic: /imu/filtered
+    # mag_topic: /mag/filtered
     imu_topic: /robot1/imu/data
     mag_topic: /robot1/mag/data
 
@@ -11,7 +13,7 @@ state_estimate_UKF:
 
 
     sigmapoint:
-      alpha: 0.5
+      alpha: 0.15
       beta: 2.0
       kappa: 0.0
 
@@ -35,18 +37,18 @@ state_estimate_UKF:
       pos_offset: [0.0, 0.0, 0.0]
       vel_offset: [0.0, 0.0]
 
-      R:  [10.0, 10.0, 0.1, 0.0025, 0.004]
+      R:  [10.0, 10.0, 0.1, 0.0007, 0.0007]
 
     imu:
       pos_offset: [0.0]       # yaw
-      vel_offset: [0.0033]       # w
+      vel_offset: [0.005]       # w
 
-      R:  [0.1, 0.0049]
+      R:  [0.1, 0.0007]
 
     mag:
       pos_offset: [0.0]       # yaw
 
-      R:  [0.01]
+      R:  [0.007]
 
     adaptive:
       v:
@@ -61,5 +63,5 @@ state_estimate_UKF:
         innovation_threshold: 0.0025
 
       R_enc_scale: 0.01
-      R_imu_scale: 0.02
+      R_imu_scale: 0.01
 

@@ -53,8 +53,7 @@ def generate_launch_description():
             executable='state_estimate_UKF2',
             name='state_estimate_UKF',
             output='screen',
-            parameters=[ukf_config,
-                {'use_sim_time': use_sim_time}]
+            parameters=[ukf_config]
         ),
 
         # ===== Odom to TF =====

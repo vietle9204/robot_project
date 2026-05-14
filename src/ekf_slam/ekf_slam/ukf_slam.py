@@ -401,99 +401,127 @@ class UKFSLAM(Node):
         # 5. Publish & Log
         self.publish_pose(scan.header.stamp)
         self.publish_map(scan.header.stamp)
-        self.get_logger().info(f"EKF-SLAM: num_landmarks={self.num_landmarks}, pose=({self.x[0,0]:.4f}, {self.x[1,0]:.4f}, {self.x[2,0]:.4f})")
+        # self.get_logger().info(f"EKF-SLAM: num_landmarks={self.num_landmarks}, pose=({self.x[0,0]:.4f}, {self.x[1,0]:.4f}, {self.x[2,0]:.4f})")
             # self.get_logger().info(...)
 
         self.w_m, self.w_c, self.sigmas = None, None, None
     
     #=================
     def generate_sigma_points(self, x, P):
-        n = x.shape[0] 
-        # Tham số cho Unscented Transform ---
-        lambd = self.alpha**2 * (n + self.kappa) - n
-        # Tính trọng số (Weights)
-        w_m = np.zeros(2 * n + 1)
-        w_c = np.zeros(2 * n + 1)
-        w_m[0] = lambd / (n + lambd)
-        w_c[0] = lambd / (n + lambd) + (1 - self.alpha**2 + self.beta)
-        for i in range(1, 2 * n + 1):
-            w_m[i] = w_c[i] = 1 / (2 * (n + lambd))
+        n = x.shape[0]
 
-        #-------- Tạo Sigma Points ---------
-        # Tính căn bậc hai của ma trận (Matrix Square Root)
+        # --- Weights: cache theo n ---
+        if not hasattr(self, '_wcache') or self._wcache['n'] != n:
+            lambd = self.alpha**2 * (n + self.kappa) - n
+            w_val = 1.0 / (2.0 * (n + lambd))
+            w_m   = np.full(2*n + 1, w_val)
+            w_c   = np.full(2*n + 1, w_val)
+            w_m[0] = lambd / (n + lambd)
+            w_c[0] = w_m[0] + (1.0 - self.alpha**2 + self.beta)
+            self._wcache = {
+                'n'     : n,
+                'w_m'   : w_m,
+                'w_c'   : w_c,
+                'lambd' : lambd,
+                'scale' : np.sqrt(n + lambd)
+            }
+        
+        w_m   = self._wcache['w_m']
+        w_c   = self._wcache['w_c']
+        scale = self._wcache['scale']
+
+        # --- Stabilize P ---
+        P_stable = 0.5 * (P + P.T)
+        np.fill_diagonal(P_stable, np.maximum(np.diag(P_stable), 1e-9))
+
+        # --- Cholesky với fallback ---
         try:
-            P = 0.5 * (P + P.T) 
-            idx_diag = np.diag_indices_from(P)
-            P[idx_diag] = np.maximum(P[idx_diag], 1e-9)
-            U = cholesky(P)
+            U = cholesky(P_stable)          # scipy: upper triangular
         except np.linalg.LinAlgError:
-            return 
+            # Jitter và retry
+            jitter = 1e-6
+            success = False
+            for _ in range(5):
+                try:
+                    np.fill_diagonal(P_stable, P_stable.diagonal() + jitter)
+                    U = cholesky(P_stable)
+                    success = True
+                    break
+                except np.linalg.LinAlgError:
+                    jitter *= 10
+            if not success:
+                return
 
+        # --- Sigma points ---
         x_flat = x.flatten()
-        scale = np.sqrt(n + lambd)
+        cols   = scale * U.T                # (n, n)
 
-        sigma_points = np.zeros((2*n + 1, n))
-        sigma_points[0] = x_flat
-
-        sigma_points[1:n+1]     = x_flat + scale * U.T
-        sigma_points[n+1:2*n+1] = x_flat - scale * U.T
+        sigma_points = np.empty((2*n + 1, n))
+        sigma_points[0]     = x_flat
+        sigma_points[1:n+1] = x_flat + cols
+        sigma_points[n+1:]  = x_flat - cols
 
         return w_m, w_c, sigma_points
     
     def predict_all_measurements(self, sigmas, w_m, w_c):
-        """
-        Dự báo đo lường cho TOÀN BỘ Landmark trong Map từ tập Sigma Points.
-        n: số lượng trạng thái (3 + 2*M)
-        m: số lượng Landmark hiện có
-        """
-        num_sigmas = sigmas.shape[0]        #S
-        num_lms = self.num_landmarks        #M
+        num_sigmas = sigmas.shape[0]        # S = 2n+1
+        num_lms    = self.num_landmarks     # M
         z_dim_full = 2 * num_lms
-        
-        # 1. Khởi tạo ma trận chứa các Sigma Points trong không gian đo lường
-        # Shape: (2*n + 1, 2*m)
 
-        xr = sigmas[:, 0]      # (S,)
-        yr = sigmas[:, 1]      # (S,)
+        # --- Robot state từ sigma points ---
+        xr    = sigmas[:, 0]   # (S,)
+        yr    = sigmas[:, 1]   # (S,)
         theta = sigmas[:, 2]   # (S,)
 
-        lm = sigmas[:, 3:].reshape(num_sigmas, num_lms, 2)   #(S, 2*M) --> (S, M, 2) 
-        mx = lm[:, :, 0]                       # (S, M)
-        my = lm[:, :, 1]                       # (S, M)
-        
-        dx = mx - xr[:, None]                  # (S, M)
-        dy = my - yr[:, None]  
+        # --- Landmark positions ---
+        lm = sigmas[:, 3:].reshape(num_sigmas, num_lms, 2)
+        mx = lm[:, :, 0]       # (S, M)
+        my = lm[:, :, 1]       # (S, M)
 
-        dist = np.sqrt(dx**2 + dy**2)          # (S, M)
-        bearing = np.arctan2(dy, dx) - theta[:, None]
+        # --- Measurement model ---
+        dx = mx - xr[:, None]  # (S, M)
+        dy = my - yr[:, None]  # (S, M)
 
-        Z_sigmas_full = np.zeros((num_sigmas, z_dim_full))
+        dist    = np.sqrt(dx**2 + dy**2)                # (S, M)
+        bearing = np.arctan2(dy, dx) - theta[:, None]   # (S, M)
+
+        # Normalize bearing: dùng % thay arctan2 → nhanh hơn 4-5x
+        bearing = (bearing + np.pi) % (2*np.pi) - np.pi  # (S, M)
+
+        # --- Z_sigmas_full ---
+        Z_sigmas_full = np.empty((num_sigmas, z_dim_full))
         Z_sigmas_full[:, 0::2] = dist
         Z_sigmas_full[:, 1::2] = bearing
 
-        # 2. Tính Kỳ vọng dự báo (Z_pred_full)
-        dist_mean = np.sum(w_m[:, None] * dist, axis=0)
-        # --- mean góc ---
-        sin_mean = np.sum(w_m[:, None] * np.sin(bearing), axis=0)
-        cos_mean = np.sum(w_m[:, None] * np.cos(bearing), axis=0)
-        bearing_mean = np.arctan2(sin_mean, cos_mean)
+        # --- Weighted mean ---
+        dist_mean = w_m @ dist                          # (M,)
 
-        # --- gộp lại ---
+        # Circular mean cho bearing: BẮT BUỘC dùng arctan2
+        # vì cần xử lý wraparound khi tổng hợp nhiều góc
+        sin_mean     = w_m @ np.sin(bearing)            # (M,)
+        cos_mean     = w_m @ np.cos(bearing)            # (M,)
+        bearing_mean = np.arctan2(sin_mean, cos_mean)   # (M,) 
+
         Z_pred_full = np.empty(z_dim_full)
         Z_pred_full[0::2] = dist_mean
         Z_pred_full[1::2] = bearing_mean
 
-        # 3. Tính Hiệp phương sai S_full và Pxz_full 
-        # Tiền tính toán dx (state error) cho Pxz
-        X_diff = sigmas - self.x.reshape(1,-1)
-        X_diff[:, 2] = (X_diff[:, 2] + np.pi) % (2*np.pi) - np.pi  #normalization
+        # --- Diff state ---
+        X_diff = sigmas - self.x.T                      # (S, n_state)
+        # Normalize angle diff: dùng %
+        X_diff[:, 2] = (X_diff[:, 2] + np.pi) % (2*np.pi) - np.pi
 
-        dZ = Z_sigmas_full - Z_pred_full   # (S, 2M)
-        dZ[:, 1::2] = (dZ[:, 1::2] + np.pi) % (2*np.pi) - np.pi   #normalize
+        # --- Diff measurement ---
+        dZ = Z_sigmas_full - Z_pred_full                # (S, 2M)
+        # Normalize bearing diff: dùng %
+        dZ[:, 1::2] = (dZ[:, 1::2] + np.pi) % (2*np.pi) - np.pi
 
-        Wc = w_c.reshape(-1, 1)
-        S_full = (Wc * dZ).T @ dZ
-        Pxz_full = (Wc * X_diff).T @ dZ
+        # --- Covariance ---
+        Wc       = w_c.reshape(-1, 1)                   # (S, 1)
+        S_full   = (Wc * dZ).T   @ dZ                  # (2M, 2M)
+        Pxz_full = (Wc * X_diff).T @ dZ                # (n_state, 2M)
+
+        S_full = 0.5 * (S_full + S_full.T)             # enforce symmetry
 
         return Z_pred_full, S_full, Pxz_full
     
@@ -503,51 +531,43 @@ class UKFSLAM(Node):
     # =========================
     def predict(self, delta_x, Q):
         dx, dy, dtheta = delta_x
-        n = self.x.shape[0]              # 3+2n
-        # Thêm nhiễu Q vào P trước khi tạo sigma points 
-        # Lấy góc hiện tại của robot trong Map
+        n = self.x.shape[0]
+
+        # --- Q rotation ---
         theta = self.x[2, 0]
-        cos_t = math.cos(theta)
-        sin_t = math.sin(theta)
-        # Ma trận quay R (3x3 cho x, y, theta)
-        R = np.array([
-            [cos_t, -sin_t, 0],
-            [sin_t,  cos_t, 0],
-            [0,      0,     1]
-        ])
-        # Xoay Q từ Robot Frame sang Global Frame
-        Q_global = R @ Q @ R.T
-        # Sau đó mới gán vào Q_model lớn
+        ct, st = math.cos(theta), math.sin(theta)
+        R = np.array([[ct, -st, 0],
+                    [st,  ct, 0],
+                    [0,   0,  1]])
         Q_model = np.zeros((n, n))
-        Q_model[:3, :3] = Q_global
+        Q_model[:3, :3] = R @ Q @ R.T
 
-        # generate sigma points
+        # --- Sigma points ---
         w_m, w_c, sigma_points = self.generate_sigma_points(self.x, self.P)
-        # -----------Dự báo từng Sigma Point qua Motion Model---------
-        sigmas_f = np.copy(sigma_points) # Copy tọa độ landmark
-        pts = sigma_points[:, 2] # Lấy cột theta của tất cả sigma points
-        cos_pts = np.cos(pts)
-        sin_pts = np.sin(pts)
 
-        # Cập nhật x, y, theta 
+        # --- Propagate: vectorized ---
+        sigmas_f = sigma_points.copy()
+        pts      = sigma_points[:, 2]      # (2n+1,)
+        cos_pts  = np.cos(pts)
+        sin_pts  = np.sin(pts)
+
         sigmas_f[:, 0] = sigma_points[:, 0] + cos_pts * dx - sin_pts * dy
         sigmas_f[:, 1] = sigma_points[:, 1] + sin_pts * dx + cos_pts * dy
-        new_thetas = pts + dtheta
-        sigmas_f[:, 2] = np.arctan2(np.sin(new_thetas), np.cos(new_thetas))
+        sigmas_f[:, 2] = np.arctan2(np.sin(pts + dtheta), np.cos(pts + dtheta))
+        
+        # landmark columns unchanged 
 
-        # -------- Hợp nhất (Recover Mean and Covariance) --------
-        # Tính State mới (Weighted mean)
-        self.x = np.sum(w_m[:, None] * sigmas_f, axis=0).reshape(-1, 1)
-        sin_sum = np.sum(w_m * np.sin(sigmas_f[:, 2]))
-        cos_sum = np.sum(w_m * np.cos(sigmas_f[:, 2]))
-        self.x[2, 0] = math.atan2(sin_sum, cos_sum)
-    
-        # Tính Covariance mới (Weighted covariance)
-        # P_new = np.zeros_like(self.P)
-        diff = sigmas_f - self.x.T 
-        diff[:, 2] = (diff[:, 2] + np.pi) % (2 * np.pi) - np.pi
+        # --- Weighted mean ---
+        self.x = (sigmas_f.T @ w_m).reshape(-1, 1)        # linear mean
+        self.x[2, 0] = math.atan2(w_m @ np.sin(sigmas_f[:, 2]), w_m @ np.cos(sigmas_f[:, 2]))
+
+        # --- Weighted covariance ---
+        diff = sigmas_f - self.x.T                         # (2n+1, n_state)
+        diff[:, 2] = np.arctan2(np.sin(diff[:, 2]),np.cos(diff[:, 2]))
         self.P = (diff.T * w_c) @ diff + Q_model
+        self.P = 0.5 * (self.P + self.P.T) + 1e-9 * np.eye(n)  # stability
 
+        # --- Cache cho scan_cb ---
         self.w_m, self.w_c, self.sigma = w_m, w_c, sigmas_f
 
         # =========================

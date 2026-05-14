@@ -4,7 +4,7 @@ ukf_slam:
     odom_topic: /odometry/data
 
     sigmapoint:
-      alpha: 0.015
+      alpha: 0.15
       beta: 2.0
       kappa: 0.0
 
@@ -13,13 +13,13 @@ ukf_slam:
              0.000, 0.000, 0.0000001]
 
     Q_scale:
-      a: 0.05
-      b: 0.03
+      a: 0.04
+      b: 0.02
 
     R: [0.0036, 0.0049]
 
     max_landmark: 150
-    time_syns_period: 0.018
+    time_syns_period: 0.015
     new_landmark_corv_base: 0.0009
 
     segment_scan:
