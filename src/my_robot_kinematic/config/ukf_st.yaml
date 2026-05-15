@@ -37,7 +37,7 @@ state_estimate_UKF:
       pos_offset: [0.0, 0.0, 0.0]
       vel_offset: [0.0, 0.0]
 
-      R:  [10.0, 10.0, 0.1, 0.0007, 0.0007]
+      R:  [10.0, 10.0, 0.1, 0.0001, 0.0007]
 
     imu:
       pos_offset: [0.0]       # yaw

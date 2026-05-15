@@ -14,9 +14,9 @@ ukf_slam:
 
     Q_scale:
       a: 0.04
-      b: 0.02
+      b: 0.03
 
-    R: [0.0036, 0.0049]
+    R: [0.0049, 0.0049]
 
     max_landmark: 150
     time_syns_period: 0.018
