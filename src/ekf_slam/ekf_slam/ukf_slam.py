@@ -620,7 +620,8 @@ class UKFSLAM(Node):
         Pxz = Pxz_full[:, matched_indices]
 
         # --- 3. Cộng nhiễu đo lường R ---
-        R = np.kron(np.eye(m), self.R_z[0])
+        # R = np.kron(np.eye(m), self.R_z[0])
+        R = block_diag(*self.R_z)
         S = S + R
 
         # --- 4. Tính toán Kalman Gain và Cập nhật ---

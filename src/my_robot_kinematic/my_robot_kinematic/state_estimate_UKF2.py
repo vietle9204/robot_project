@@ -537,7 +537,7 @@ class state_estimate(Node):
         v = sigma[3, :] + sigma[5, :]
         w = sigma[4, :] + sigma[6, :]
 
-        v = np.where(np.abs(v) < self.motion_threshold, 0, v)
+        v = np.where(np.abs(v) < 0.25*self.motion_threshold, 0, v)
         w = np.where(np.abs(w) < self.motion_threshold, 0, w)
 
         theta = sigma[2, :]
