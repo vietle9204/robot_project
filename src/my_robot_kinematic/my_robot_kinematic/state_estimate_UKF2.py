@@ -13,13 +13,13 @@ from rclpy.time import Time
 qos = QoSProfile(
     reliability=ReliabilityPolicy.BEST_EFFORT,
     durability=DurabilityPolicy.VOLATILE,
-    depth=100
+    depth=10
 )
 
 qos2 = QoSProfile(
     reliability=ReliabilityPolicy.RELIABLE,
     durability=DurabilityPolicy.VOLATILE,
-    depth=100
+    depth=10
 )
 
 def angle_normalize(a):

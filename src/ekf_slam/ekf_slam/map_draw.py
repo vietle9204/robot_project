@@ -74,7 +74,7 @@ class OccupancyMapping(Node):
         self.ts = ApproximateTimeSynchronizer(
             [self.scan_sub, self.pose_sub],
             queue_size=100,
-            slop=0.005
+            slop=0.01
         )
         self.ts.registerCallback(self.sync_cb)
 
