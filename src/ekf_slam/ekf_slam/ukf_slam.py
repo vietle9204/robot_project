@@ -1415,7 +1415,7 @@ class UKFSLAM(Node):
         # self.processing = False
         # timer
         self.timer = self.create_timer(
-            0.03,
+            0.02,
             self.process,
             # callback_group=self.cb_group
         )
