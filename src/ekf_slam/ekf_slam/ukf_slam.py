@@ -2390,9 +2390,16 @@ class UKFSLAM(Node):
         chi2_threshold=5.99
     ):
 
+        # =========================================
+        # reset outputs
+        # =========================================
+
         self.z = []
+
         self.R_z = []
+
         self.z_lm_ids = []
+
         self.new_features = []
 
         self.lm_observed = np.zeros(
@@ -2424,7 +2431,7 @@ class UKFSLAM(Node):
             return
 
         # =========================================
-        # predicted measurements
+        # reshape predicted measurements
         # =========================================
 
         Z_pred = Z_pred_full.reshape(M, 2)
@@ -2435,7 +2442,7 @@ class UKFSLAM(Node):
 
         S_blocks = (
             S_full.reshape(M, 2, M, 2)
-            .transpose(0,2,1,3)
+            .transpose(0, 2, 1, 3)
         )
 
         S_blocks = S_blocks[
@@ -2449,12 +2456,25 @@ class UKFSLAM(Node):
 
         lm_xy = self.x[3:].reshape(-1, 2)
 
+        # =========================================
         # KDTree
+        # =========================================
+
         kdtree = cKDTree(lm_xy)
 
-        robot_x = self.x[0]
-        robot_y = self.x[1]
-        robot_yaw = self.x[2]
+        # =========================================
+        # robot pose
+        # =========================================
+
+        robot_x = float(self.x[0])
+
+        robot_y = float(self.x[1])
+
+        robot_yaw = float(self.x[2])
+
+        # =========================================
+        # candidate pairs
+        # =========================================
 
         pairs = []
 
@@ -2464,12 +2484,21 @@ class UKFSLAM(Node):
 
         for i, (z_obs, R_obs) in enumerate(features):
 
-            r = z_obs[0]
-            b = z_obs[1]
+            # -------------------------------------
+            # flatten observation
+            # -------------------------------------
 
-            # =====================================
+            z_obs = np.asarray(
+                z_obs
+            ).flatten()
+
+            r = float(z_obs[0])
+
+            b = float(z_obs[1])
+
+            # -------------------------------------
             # feature global position
-            # =====================================
+            # -------------------------------------
 
             gx = robot_x + r * np.cos(
                 robot_yaw + b
@@ -2479,9 +2508,9 @@ class UKFSLAM(Node):
                 robot_yaw + b
             )
 
-            # =====================================
+            # -------------------------------------
             # KDTree search
-            # =====================================
+            # -------------------------------------
 
             candidate_ids = kdtree.query_ball_point(
                 [gx, gy],
@@ -2491,14 +2520,14 @@ class UKFSLAM(Node):
             if len(candidate_ids) == 0:
                 continue
 
-            candidate_ids = np.array(
+            candidate_ids = np.asarray(
                 candidate_ids,
                 dtype=int
             )
 
-            # =====================================
+            # -------------------------------------
             # innovation
-            # =====================================
+            # -------------------------------------
 
             v = Z_pred[candidate_ids] - z_obs
 
@@ -2507,9 +2536,9 @@ class UKFSLAM(Node):
                 np.cos(v[:,1])
             )
 
-            # =====================================
+            # -------------------------------------
             # coarse gating
-            # =====================================
+            # -------------------------------------
 
             mask = (
                 (np.abs(v[:,0]) < self.range_raw_th)
@@ -2522,18 +2551,22 @@ class UKFSLAM(Node):
             if len(valid_local) == 0:
                 continue
 
-            valid_ids = candidate_ids[valid_local]
+            valid_ids = candidate_ids[
+                valid_local
+            ]
 
-            v_valid = v[valid_local]
+            v_valid = v[
+                valid_local
+            ]
 
             S_valid = (
                 S_blocks[valid_ids]
                 + R_obs
             )
 
-            # =====================================
-            # Mahalanobis
-            # =====================================
+            # -------------------------------------
+            # mahalanobis
+            # -------------------------------------
 
             try:
 
@@ -2550,9 +2583,9 @@ class UKFSLAM(Node):
 
                 continue
 
-            # =====================================
+            # -------------------------------------
             # chi2 gating
-            # =====================================
+            # -------------------------------------
 
             good = d2 < chi2_threshold
 
@@ -2562,17 +2595,19 @@ class UKFSLAM(Node):
 
                 pairs.append(
                     (
-                        d2[good][idx],
+                        float(d2[good][idx]),
                         i,
-                        lm_id
+                        int(lm_id)
                     )
                 )
 
         # =========================================
-        # GNN
+        # Global Nearest Neighbor
         # =========================================
 
-        pairs.sort(key=lambda x: x[0])
+        pairs.sort(
+            key=lambda x: x[0]
+        )
 
         used_feat = set()
 
@@ -2595,7 +2630,7 @@ class UKFSLAM(Node):
                 used_lm.add(lm_id)
 
         # =========================================
-        # output
+        # output classification
         # =========================================
 
         for i, (z_obs, R_obs) in enumerate(features):
