@@ -36,7 +36,7 @@ ukf_slam:
      angle_threshold: 0.02
 
     association:
-      chi2_threshold: 7.44
+      chi2_threshold: 5.99
       range_raw_thes: 1.5
       angle_raw_thes: 0.5
 
