@@ -19,7 +19,7 @@ ukf_slam:
     R: [0.0025, 0.0025]
 
     max_landmark: 150
-    time_syns_period: 0.018
+    time_syns_period: 0.012
     new_landmark_corv_base: 0.0016
 
     segment_scan:
@@ -37,8 +37,8 @@ ukf_slam:
 
     association:
       chi2_threshold: 5.99
-      range_raw_thes: 2.0
-      angle_raw_thes: 0.5
+      range_raw_thes: 1.0
+      angle_raw_thes: 0.3
 
 
 
