@@ -23,13 +23,13 @@ class ScanToCloudPoints(Node):
             LaserScan,
             '/robot1/scan',
             self.scan_callback,
-            10
+            100
         )
 
         self.pub = self.create_publisher(
             PointCloud2,
             '/scan/cloudpoints',
-            10
+            100
         )
 
         self.get_logger().info('Scan → PointCloud2 node started')

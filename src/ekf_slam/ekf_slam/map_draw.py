@@ -18,16 +18,16 @@ UNKNOWN = -1
 qos = QoSProfile(
     reliability=ReliabilityPolicy.BEST_EFFORT,
     durability=DurabilityPolicy.VOLATILE,
-    depth=10
+    depth=100
 )
 
 qos2 = QoSProfile(
     reliability=ReliabilityPolicy.RELIABLE,
     durability=DurabilityPolicy.VOLATILE,
-    depth=10
+    depth=100
 )
 qos_map = QoSProfile(
-    depth=10,
+    depth=100,
     reliability=ReliabilityPolicy.RELIABLE,
     durability=DurabilityPolicy.TRANSIENT_LOCAL  
 )
@@ -73,7 +73,7 @@ class OccupancyMapping(Node):
 
         self.ts = ApproximateTimeSynchronizer(
             [self.scan_sub, self.pose_sub],
-            queue_size=20,
+            queue_size=100,
             slop=0.005
         )
         self.ts.registerCallback(self.sync_cb)
