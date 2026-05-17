@@ -507,7 +507,7 @@ class state_estimate(Node):
         # self.get_logger().info("Odom published: x,y,theta = {:.4f}, {:.4f}, {:.4f}".format(
         #     self.x_k[0,0], self.x_k[1,0], self.x_k[2,0]
         # ))
-        self.get_logger().info("enc_buffer length: {}, imu_buffer length: {}, mag_buffer length: {}".format(len(self.enc_buffer)+enc_flag, len(self.imu_buffer)+imu_flag, len(self.mag_buffer)+mag_flag))
+        # self.get_logger().info("enc_buffer length: {}, imu_buffer length: {}, mag_buffer length: {}".format(len(self.enc_buffer)+enc_flag, len(self.imu_buffer)+imu_flag, len(self.mag_buffer)+mag_flag))
 
         # if(self.enc_buffer or self.imu_buffer):
         #     self.ST_process()

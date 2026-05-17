@@ -189,7 +189,7 @@ class UKFSLAM(Node):
     def ros_init(self):
         self.kdtree = None
         self.kdtree_dirty = True
-        self.kdtree_radius = 1.5
+        self.kdtree_radius = 2.0
         
         # Subcriptions
         # self.create_subscription(Odometry, self.odom_topic, self.odom_cb, qos)
