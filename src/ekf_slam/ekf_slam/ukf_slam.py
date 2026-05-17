@@ -1414,7 +1414,7 @@ class UKFSLAM(Node):
         # self.processing = False
         # timer
         self.timer = self.create_timer(
-            0.005,
+            0.015,
             self.process,
             # callback_group=self.cb_group
         )
@@ -1596,15 +1596,21 @@ class UKFSLAM(Node):
         self.scan_buffer.append(scan)
         # self.get_logger().info(f"Received scan: time={scan.header.stamp.sec}.{scan.header.stamp.nanosec}, range_count={len(scan.ranges)}")
         
-    def scan_process(self, scan: LaserScan):
+    def scan_process(self, scan: LaserScan, odom_msg: Odometry):
         if self.sigma is None:
             return
+        
+        predic =  self.scan_thread.submit(
+            self.odom_process,
+            odom_msg
+        )
         
         future_features = self.scan_thread.submit(
             self.extract_features_from_scan,
             scan
         )
 
+        predic.result()  # Đảm bảo odometry đã được xử lý trước khi tiếp tục
         future_predict = self.scan_thread.submit(
             self.predict_all_measurements,
             self.sigma,
@@ -1690,8 +1696,8 @@ class UKFSLAM(Node):
             if dt < 0.01:
                 odom_msg = self.odom_buffer.popleft()
                 scan_msg = self.scan_buffer.popleft()
-                self.odom_process(odom_msg)
-                self.scan_process(scan_msg)
+                # self.odom_process(odom_msg)
+                self.scan_process(scan_msg, odom_msg)
                 self.get_logger().info(f"Processing synchronized odometry and scan messages. odom time = {odom_time:.3f}, scan time = {scan_time:.3f}, dt = {dt:.3f}. odom queue size = {len(self.odom_buffer)}, scan queue size = {len(self.scan_buffer)}")
             else:
                 self.odom_buffer.popleft()
@@ -1714,8 +1720,8 @@ class UKFSLAM(Node):
                 
                 odom_msg = self.odom_buffer.popleft()
                 scan_msg = self.scan_buffer.popleft()
-                self.odom_process(odom_msg)
-                self.scan_process(scan_msg)
+                # self.odom_process(odom_msg)
+                self.scan_process(scan_msg, odom_msg)
                 self.get_logger().info(f"Processing synchronized odometry and scan messages. odom time = {odom_time:.3f}, scan time = {scan_time:.3f}, dt = {dt:.3f}. odom queue size = {len(self.odom_buffer)}, scan queue size = {len(self.scan_buffer)}")
                 
                 
