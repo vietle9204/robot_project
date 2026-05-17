@@ -364,9 +364,9 @@ class state_estimate(Node):
             imu_last_time = self.last_imu_msg.header.stamp.sec + self.last_imu_msg.header.stamp.nanosec * 1e-9
             imu_dt = t_imu - imu_last_time
 
-            angular_vel_yaw = float(imu_msg.angular_velocity.z)
+            angular_vel_yaw = float(imu_msg.angular_velocity.z) - float(self.imu_vel_offset[0,0])
             # angular_vel_yaw =  angular_vel_yaw #- 0.004
-            self.imu_theta += (angular_vel_yaw-self.imu_vel_offset[0,0])*imu_dt
+            self.imu_theta += (angular_vel_yaw)*imu_dt
             imu_theta = angle_normalize(self.imu_theta)
 
             self.imu_buffer.popleft()
