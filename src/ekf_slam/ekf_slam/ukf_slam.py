@@ -1212,7 +1212,6 @@ from scipy.linalg import block_diag
 from message_filters import Subscriber, ApproximateTimeSynchronizer
 from concurrent.futures import ThreadPoolExecutor
 from rclpy.executors import MultiThreadedExecutor
-from scipy.spatial import cKDTree
 
 qos = QoSProfile(
     reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -1387,7 +1386,7 @@ class UKFSLAM(Node):
         self.angle_raw_th = self.get_parameter('association.angle_raw_thes').value
 
     def ros_init(self):
-        self.kdtree_radius = 1.5
+        
         self.max_size = 100
         self.odom_buffer = deque(maxlen=self.max_size)
         self.scan_buffer = deque(maxlen=self.max_size)
@@ -2382,278 +2381,124 @@ class UKFSLAM(Node):
     # =========================
     # 5. DATA ASSOCIATION
     # =========================
-    def association(
-        self,
-        features,
-        Z_pred_full,
-        S_full,
-        chi2_threshold=5.99
-    ):
-
-        # =========================================
-        # reset outputs
-        # =========================================
-
+    def association(self, features, Z_pred_full, S_full, chi2_threshold=5.99):
+        """
+        features: list of (z_obs, R_obs) từ extract_features_from_scan
+        Z_pred_full: Vector (2*M,) dự báo [r1, b1, r2, b2...]
+        S_full: Ma trận (2*M, 2*M) hiệp phương sai dự báo
+        """
         self.z = []
-
         self.R_z = []
-
         self.z_lm_ids = []
-
         self.new_features = []
-
-        self.lm_observed = np.zeros(
-            self.num_landmarks,
-            dtype=bool
-        )
-
-        # =========================================
-        # no landmarks
-        # =========================================
+        self.lm_observed = np.zeros(self.num_landmarks, dtype=bool)
 
         if self.num_landmarks == 0:
-
             for z_obs, R_obs in features:
-
-                self.new_features.append(
-                    (z_obs, R_obs)
-                )
-
+                self.new_features.append((z_obs, R_obs))
             return
 
-        # =========================================
-        # landmark count
-        # =========================================
+        # # 1. Trích xuất các khối đường chéo S cho từng Landmark
+        # # S_diag_blocks[lm_id] = ma trận 2x2
+        # # S_diag_blocks = [
+        # #     S_full[2*j : 2*j+2, 2*j : 2*j+2] for j in range(self.num_landmarks)
+        # # ]
 
-        M = Z_pred_full.size // 2
+        # # 2. Tính toán tất cả ứng viên tiềm năng (Mahalanobis)
+        # pairs = []  # (d2, feat_id, lm_id)
 
-        if M == 0:
-            return
+        # for i, (z_obs, R_obs) in enumerate(features):
+        #     # --- reshape ---
+        #     # z_obs = z_obs.reshape(1, 2)   # (1,2)
+        #     # Z_pred = Z_pred_full.reshape(-1, 2)   # (M,2)
 
-        # =========================================
-        # reshape predicted measurements
-        # =========================================
+        #     # --- innovation ---
+        #     v = Z_pred_full.reshape(-1, 2) - z_obs   # (M,2)
+        #     v[:, 1] = (v[:, 1] + np.pi) % (2*np.pi) - np.pi
 
+        #     # gating thô
+        #     mask = (np.abs(v[:,0]) < 2.0) & (np.abs(v[:,1]) < np.pi/6)
+        #     valid_ids = np.where(mask)[0]
+
+        #     for lm_id in valid_ids:
+        #         S_total = S_full[2*lm_id:2*lm_id+2, 2*lm_id:2*lm_id+2] + R_obs
+        #         try:
+        #             d2 = v[lm_id].T @ np.linalg.solve(S_total, v[lm_id])
+        #             if d2 < chi2_threshold:
+        #                 pairs.append((d2, i, lm_id))
+        #         except np.linalg.LinAlgError:
+        #             continue
+
+        M = self.num_landmarks
+
+        # --- reshape trước (tránh làm lại nhiều lần) ---
         Z_pred = Z_pred_full.reshape(M, 2)
 
-        # =========================================
-        # covariance blocks
-        # =========================================
-
-        S_blocks = (
-            S_full.reshape(M, 2, M, 2)
-            .transpose(0, 2, 1, 3)
-        )
-
-        S_blocks = S_blocks[
-            np.arange(M),
-            np.arange(M)
-        ]
-
-        # =========================================
-        # landmark positions
-        # =========================================
-
-        lm_xy = self.x[3:].reshape(-1, 2)
-
-        # =========================================
-        # KDTree
-        # =========================================
-
-        kdtree = cKDTree(lm_xy)
-
-        # =========================================
-        # robot pose
-        # =========================================
-
-        robot_x = float(self.x[0])
-
-        robot_y = float(self.x[1])
-
-        robot_yaw = float(self.x[2])
-
-        # =========================================
-        # candidate pairs
-        # =========================================
+        # --- lấy block S 2x2 cho từng landmark ---
+        S_blocks = S_full.reshape(M, 2, M, 2).transpose(0,2,1,3)
+        S_blocks = S_blocks[np.arange(M), np.arange(M)]   # (M,2,2)
 
         pairs = []
 
-        # =========================================
-        # feature loop
-        # =========================================
-
         for i, (z_obs, R_obs) in enumerate(features):
 
-            # -------------------------------------
-            # flatten observation
-            # -------------------------------------
+            # --- innovation vectorized ---
+            v = Z_pred - z_obs   # (M,2)
+            v[:,1] = np.arctan2(np.sin(v[:,1]), np.cos(v[:,1]))
 
-            z_obs = np.asarray(
-                z_obs
-            ).flatten()
+            # --- gating thô ---
+            mask = (np.abs(v[:,0]) < self.range_raw_th) & (np.abs(v[:,1]) < self.angle_raw_th)
+            valid_ids = np.where(mask)[0]
 
-            r = float(z_obs[0])
-
-            b = float(z_obs[1])
-
-            # -------------------------------------
-            # feature global position
-            # -------------------------------------
-
-            gx = robot_x + r * np.cos(
-                robot_yaw + b
-            )
-
-            gy = robot_y + r * np.sin(
-                robot_yaw + b
-            )
-
-            # -------------------------------------
-            # KDTree search
-            # -------------------------------------
-
-            candidate_ids = kdtree.query_ball_point(
-                [gx, gy],
-                r=self.kdtree_radius
-            )
-
-            if len(candidate_ids) == 0:
+            if len(valid_ids) == 0:
                 continue
 
-            candidate_ids = np.asarray(
-                candidate_ids,
-                dtype=int
-            )
+            v_valid = v[valid_ids]                      # (k,2)
+            S_valid = S_blocks[valid_ids] + R_obs       # (k,2,2)
 
-            # -------------------------------------
-            # innovation
-            # -------------------------------------
+            # --- tính Mahalanobis vectorized ---
+            # try:
+            #     S_inv = np.linalg.inv(S_valid)   # (k,2,2)
+            # except np.linalg.LinAlgError:
+            #     continue
 
-            v = Z_pred[candidate_ids] - z_obs
+            d2 = np.einsum('ij,ij->i',
+               v_valid,
+               np.linalg.solve(S_valid, v_valid[:,:,None]).squeeze(-1))
 
-            v[:,1] = np.arctan2(
-                np.sin(v[:,1]),
-                np.cos(v[:,1])
-            )
-
-            # -------------------------------------
-            # coarse gating
-            # -------------------------------------
-
-            mask = (
-                (np.abs(v[:,0]) < self.range_raw_th)
-                &
-                (np.abs(v[:,1]) < self.angle_raw_th)
-            )
-
-            valid_local = np.where(mask)[0]
-
-            if len(valid_local) == 0:
-                continue
-
-            valid_ids = candidate_ids[
-                valid_local
-            ]
-
-            v_valid = v[
-                valid_local
-            ]
-
-            S_valid = (
-                S_blocks[valid_ids]
-                + R_obs
-            )
-
-            # -------------------------------------
-            # mahalanobis
-            # -------------------------------------
-
-            try:
-
-                d2 = np.einsum(
-                    'ij,ij->i',
-                    v_valid,
-                    np.linalg.solve(
-                        S_valid,
-                        v_valid[:,:,None]
-                    ).squeeze(-1)
-                )
-
-            except np.linalg.LinAlgError:
-
-                continue
-
-            # -------------------------------------
-            # chi2 gating
-            # -------------------------------------
-
+            # --- filter chi2 ---
             good = d2 < chi2_threshold
 
-            for idx, lm_id in enumerate(
-                valid_ids[good]
-            ):
+            for idx, lm_id in enumerate(valid_ids[good]):
+                pairs.append((d2[good][idx], i, lm_id))
 
-                pairs.append(
-                    (
-                        float(d2[good][idx]),
-                        i,
-                        int(lm_id)
-                    )
-                )
-
-        # =========================================
-        # Global Nearest Neighbor
-        # =========================================
-
-        pairs.sort(
-            key=lambda x: x[0]
-        )
+        # 3. Chọn cặp khớp One-to-One (GNN)
+        pairs.sort(key=lambda x: x[0])
 
         used_feat = set()
-
-        used_lm = set()
-
+        used_lm   = set()
         associations = {}
 
         for d2, i, lm_id in pairs:
-
-            if (
-                i not in used_feat
-                and
-                lm_id not in used_lm
-            ):
-
+            if i not in used_feat and lm_id not in used_lm:
                 associations[i] = lm_id
-
                 used_feat.add(i)
-
                 used_lm.add(lm_id)
 
-        # =========================================
-        # output classification
-        # =========================================
-
+        # 4. Phân loại Feature thành Landmark cũ hoặc Feature mới
         for i, (z_obs, R_obs) in enumerate(features):
-
             if i in associations:
-
                 lm_id = associations[i]
-
                 self.z.append(z_obs)
-
                 self.R_z.append(R_obs)
-
                 self.z_lm_ids.append(lm_id)
-
+                
                 self.lm_observed[lm_id] = True
-
                 self.landmark_score[lm_id] += 2.0
-
             else:
+                # Trả về cả z và R để khởi tạo landmark mới chính xác hơn
+                self.new_features.append((z_obs, R_obs))
 
-                self.new_features.append(
-                    (z_obs, R_obs)
-                )
 
 def main(args=None):
     rclpy.init(args=args)
