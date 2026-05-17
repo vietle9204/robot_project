@@ -1415,7 +1415,7 @@ class UKFSLAM(Node):
         # self.processing = False
         # timer
         self.timer = self.create_timer(
-            0.001,
+            0.0001,
             self.process,
             # callback_group=self.cb_group
         )
@@ -1694,7 +1694,7 @@ class UKFSLAM(Node):
                 )
                 dt = scan_time - odom_time
         
-            if dt < 0.01:
+            if dt < 0.015:
                 odom_msg = self.odom_buffer.popleft()
                 scan_msg = self.scan_buffer.popleft()
                 # self.odom_process(odom_msg)
