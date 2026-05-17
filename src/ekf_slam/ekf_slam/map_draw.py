@@ -74,7 +74,7 @@ class OccupancyMapping(Node):
         self.ts = ApproximateTimeSynchronizer(
             [self.scan_sub, self.pose_sub],
             queue_size=20,
-            slop=0.01
+            slop=0.005
         )
         self.ts.registerCallback(self.sync_cb)
 
@@ -264,8 +264,8 @@ class OccupancyMapping(Node):
         msg.info.origin.orientation.w = 1.0
 
         occ_grid = np.full(self.log_odds.shape, UNKNOWN, dtype=np.int8)
-        occ_grid[self.log_odds > 3.0] = OCCUPIED
-        occ_grid[self.log_odds < -1.2] = FREE
+        occ_grid[self.log_odds > 5.0] = OCCUPIED
+        occ_grid[self.log_odds < 2.0] = FREE
 
         msg.data = occ_grid.ravel().tolist()
 
