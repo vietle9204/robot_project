@@ -265,7 +265,7 @@ class OccupancyMapping(Node):
 
         occ_grid = np.full(self.log_odds.shape, UNKNOWN, dtype=np.int8)
         occ_grid[self.log_odds > 5.0] = OCCUPIED
-        occ_grid[self.log_odds < 2.0] = FREE
+        occ_grid[self.log_odds < -0.5] = FREE
 
         msg.data = occ_grid.ravel().tolist()
 
