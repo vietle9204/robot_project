@@ -201,18 +201,20 @@ class UKFSLAM(Node):
         # Publishers
         self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, "/ekf_slam/pose", qos2)
         self.map_pub = self.create_publisher(MarkerArray, "/ekf_slam/map", 1)
+        
+        self.pub_thread = ThreadPoolExecutor(max_workers=1)
 
-    def publish_pose(self, stamp):
+    def publish_pose(self, stamp, x):
         msg = PoseWithCovarianceStamped()
         msg.header.stamp = stamp
         msg.header.frame_id = "map"   # EKF-SLAM 
 
         # --- Pose ---
-        msg.pose.pose.position.x = float(self.x[0, 0])
-        msg.pose.pose.position.y = float(self.x[1, 0])
+        msg.pose.pose.position.x = float(x[0, 0])
+        msg.pose.pose.position.y = float(x[1, 0])
         msg.pose.pose.position.z = 0.0
 
-        q = quaternion_from_euler(0.0, 0.0, self.x[2, 0])
+        q = quaternion_from_euler(0.0, 0.0, x[2, 0])
         msg.pose.pose.orientation.x = q[0]
         msg.pose.pose.orientation.y = q[1]
         msg.pose.pose.orientation.z = q[2]
@@ -267,11 +269,19 @@ class UKFSLAM(Node):
             marker_array.markers.append(m)
 
         self.map_pub.publish(marker_array)
+        
+    def publish_all(self, stamp, x, lm_observed):
+
+        self.publish_pose(stamp, x)
+
+        self.publish_map(
+            stamp
+        )
 
     def sync_cb(self, odom_msg, scan_msg):
         time = self.get_clock().now()
-        self.odom_cb(odom_msg)
-        self.scan_cb(scan_msg)
+        # self.odom_cb(odom_msg)
+        self.scan_cb(scan_msg, odom_msg)
         dt = (self.get_clock().now() - time).nanoseconds * 1e-9
         self.get_logger().info(f"Sync Callback: num lanmark: {self.num_landmarks} | odom and scan processed in {dt:.4f} seconds")
 
@@ -357,15 +367,20 @@ class UKFSLAM(Node):
         # self.last_vel_cov = curr_vel_cov
 
 
-    def scan_cb(self, scan: LaserScan):
-        if self.sigma is None:
-            return
+    def scan_cb(self, scan: LaserScan, odom: Odometry):
+        predict = self.scan_thread.submit(
+            self.odom_cb,
+            odom
+        )
         
         future_features = self.scan_thread.submit(
             self.extract_features_from_scan,
             scan
         )
-
+        
+        predict.result()  # Đảm bảo odom_cb đã hoàn thành trước khi tiếp tục
+        if self.sigma is None:
+            return
         future_predict = self.scan_thread.submit(
             self.predict_all_measurements,
             self.sigma,
@@ -402,6 +417,19 @@ class UKFSLAM(Node):
         self.x[2, 0] = normalize_angle(self.x[2, 0])
 
         # 5. Publish & Log
+        stamp = scan.header.stamp
+
+        x_copy = self.x.copy()
+
+        lm_obs = self.lm_observed.copy()
+
+        self.pub_thread.submit(
+            self.publish_all,
+            stamp,
+            x_copy,
+            lm_obs
+        )
+        
         self.publish_pose(scan.header.stamp)
         self.publish_map(scan.header.stamp)
         # self.get_logger().info(f"EKF-SLAM: num_landmarks={self.num_landmarks}, pose=({self.x[0,0]:.4f}, {self.x[1,0]:.4f}, {self.x[2,0]:.4f})")
