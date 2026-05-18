@@ -230,19 +230,19 @@ class UKFSLAM(Node):
 
         self.pose_pub.publish(msg)    
 
-    def publish_map(self, stamp):
+    def publish_map(self, stamp, x, observed):
         if self.num_landmarks == 0:
             return
 
         marker_array = MarkerArray()
 
         for lm_id in range(self.num_landmarks):
-            if lm_id >= len(self.lm_observed):
+            if lm_id >= len(observed):
                 continue
 
             idx = 3 + 2 * lm_id
-            mx = float(self.x[idx, 0])
-            my = float(self.x[idx + 1, 0])
+            mx = float(x[idx, 0])
+            my = float(x[idx + 1, 0])
 
             m = Marker()
             m.header.frame_id = "map"
@@ -261,7 +261,7 @@ class UKFSLAM(Node):
             m.scale.x = m.scale.y = m.scale.z = 0.15
 
             m.color.a = 1.0
-            if self.lm_observed[lm_id]:
+            if observed[lm_id]:
                 m.color.g = 1.0
             else:
                 m.color.r = 1.0
@@ -275,7 +275,9 @@ class UKFSLAM(Node):
         self.publish_pose(stamp, x)
 
         self.publish_map(
-            stamp
+            stamp,
+            x,
+            lm_observed
         )
 
     def sync_cb(self, odom_msg, scan_msg):
@@ -430,8 +432,8 @@ class UKFSLAM(Node):
             lm_obs
         )
         
-        self.publish_pose(scan.header.stamp)
-        self.publish_map(scan.header.stamp)
+        # self.publish_pose(scan.header.stamp)
+        # self.publish_map(scan.header.stamp)
         # self.get_logger().info(f"EKF-SLAM: num_landmarks={self.num_landmarks}, pose=({self.x[0,0]:.4f}, {self.x[1,0]:.4f}, {self.x[2,0]:.4f})")
             # self.get_logger().info(...)
 
