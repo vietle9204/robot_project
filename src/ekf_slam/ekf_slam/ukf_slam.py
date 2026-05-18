@@ -54,6 +54,24 @@ def quaternion_from_euler(roll, pitch, yaw):
 
     return qx, qy, qz, qw
 
+def inv2x2_batch(M):
+    a = M[:,0,0]
+    b = M[:,0,1]
+    c = M[:,1,0]
+    d = M[:,1,1]
+
+    det = a*d - b*c
+    det[det < 1e-12] = 1e-12
+
+    inv = np.empty_like(M)
+
+    inv[:,0,0] =  d/det
+    inv[:,0,1] = -b/det
+    inv[:,1,0] = -c/det
+    inv[:,1,1] =  a/det
+
+    return inv
+
 class UKFSLAM(Node):
     def __init__(self):
         super().__init__("ekf_slam")
@@ -202,17 +220,19 @@ class UKFSLAM(Node):
         self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, "/ekf_slam/pose", qos2)
         self.map_pub = self.create_publisher(MarkerArray, "/ekf_slam/map", 1)
 
-    def publish_pose(self, stamp):
+        self.pub_thread = ThreadPoolExecutor(max_workers=1)
+
+    def publish_pose(self, stamp, x):
         msg = PoseWithCovarianceStamped()
         msg.header.stamp = stamp
         msg.header.frame_id = "map"   # EKF-SLAM 
 
         # --- Pose ---
-        msg.pose.pose.position.x = float(self.x[0, 0])
-        msg.pose.pose.position.y = float(self.x[1, 0])
+        msg.pose.pose.position.x = float(x[0, 0])
+        msg.pose.pose.position.y = float(x[1, 0])
         msg.pose.pose.position.z = 0.0
 
-        q = quaternion_from_euler(0.0, 0.0, self.x[2, 0])
+        q = quaternion_from_euler(0.0, 0.0, x[2, 0])
         msg.pose.pose.orientation.x = q[0]
         msg.pose.pose.orientation.y = q[1]
         msg.pose.pose.orientation.z = q[2]
@@ -228,14 +248,14 @@ class UKFSLAM(Node):
 
         self.pose_pub.publish(msg)    
 
-    def publish_map(self, stamp):
+    def publish_map(self, stamp, lm_observed):
         if self.num_landmarks == 0:
             return
 
         marker_array = MarkerArray()
 
         for lm_id in range(self.num_landmarks):
-            if lm_id >= len(self.lm_observed):
+            if lm_id >= len(lm_observed):
                 continue
 
             idx = 3 + 2 * lm_id
@@ -259,7 +279,7 @@ class UKFSLAM(Node):
             m.scale.x = m.scale.y = m.scale.z = 0.15
 
             m.color.a = 1.0
-            if self.lm_observed[lm_id]:
+            if lm_observed[lm_id]:
                 m.color.g = 1.0
             else:
                 m.color.r = 1.0
@@ -267,10 +287,19 @@ class UKFSLAM(Node):
             marker_array.markers.append(m)
 
         self.map_pub.publish(marker_array)
+        
+    def publish_all(self, stamp, x, lm_observed):
+        self.publish_pose(stamp, x)
+        self.publish_map(
+            stamp, lm_observed
+        )
 
     def sync_cb(self, odom_msg, scan_msg):
-       self.odom_cb(odom_msg)
-       self.scan_cb(scan_msg)
+        time = self.get_clock().now()
+        self.odom_cb(odom_msg)
+        self.scan_cb(scan_msg, odom_msg)
+        dt = (self.get_clock().now() - time).nanoseconds * 1e-9
+        self.get_logger().info(f"Sync callback: processing time = {dt:.4f} seconds")
 
     def odom_cb(self, msg: Odometry):
         # data pose_odom ---
@@ -354,15 +383,20 @@ class UKFSLAM(Node):
         # self.last_vel_cov = curr_vel_cov
 
 
-    def scan_cb(self, scan: LaserScan):
-        if self.sigma is None:
-            return
+    def scan_cb(self, scan: LaserScan, odom_msg: Odometry):
+        # predict = self.scan_thread.submit(
+        #     self.odom_cb,
+        #     odom_msg
+        # )
         
         future_features = self.scan_thread.submit(
             self.extract_features_from_scan,
             scan
         )
-
+        
+        # predict.result() 
+        if self.sigma is None:
+            return
         future_predict = self.scan_thread.submit(
             self.predict_all_measurements,
             self.sigma,
@@ -399,12 +433,21 @@ class UKFSLAM(Node):
         self.x[2, 0] = normalize_angle(self.x[2, 0])
 
         # 5. Publish & Log
-        self.publish_pose(scan.header.stamp)
-        self.publish_map(scan.header.stamp)
+        stamp = scan.header.stamp
+        x_copy = self.x.copy()
+        lm_obs = self.lm_observed.copy()
+        self.pub_thread.submit(
+            self.publish_all,
+            stamp,
+            x_copy,
+            lm_obs
+        )
         # self.get_logger().info(f"EKF-SLAM: num_landmarks={self.num_landmarks}, pose=({self.x[0,0]:.4f}, {self.x[1,0]:.4f}, {self.x[2,0]:.4f})")
             # self.get_logger().info(...)
 
-        self.w_m, self.w_c, self.sigmas = None, None, None
+        self.w_m, self.w_c, self.sigma = None, None, None
+    
+    
     
     #=================
     def generate_sigma_points(self, x, P):
@@ -495,9 +538,6 @@ class UKFSLAM(Node):
 
         # --- Weighted mean ---
         dist_mean = w_m @ dist                          # (M,)
-
-        # Circular mean cho bearing: BẮT BUỘC dùng arctan2
-        # vì cần xử lý wraparound khi tổng hợp nhiều góc
         sin_mean     = w_m @ np.sin(bearing)            # (M,)
         cos_mean     = w_m @ np.cos(bearing)            # (M,)
         bearing_mean = np.arctan2(sin_mean, cos_mean)   # (M,) 
@@ -543,32 +583,31 @@ class UKFSLAM(Node):
         Q_model[:3, :3] = R @ Q @ R.T
 
         # --- Sigma points ---
-        w_m, w_c, sigma_points = self.generate_sigma_points(self.x, self.P)
+        self.w_m, self.w_c, self.sigma = self.generate_sigma_points(self.x, self.P)
 
         # --- Propagate: vectorized ---
-        sigmas_f = sigma_points.copy()
-        pts      = sigma_points[:, 2]      # (2n+1,)
+        # sigmas_f = self.sigma.copy()
+        pts      = self.sigma[:, 2]      # (2n+1,)
         cos_pts  = np.cos(pts)
         sin_pts  = np.sin(pts)
 
-        sigmas_f[:, 0] = sigma_points[:, 0] + cos_pts * dx - sin_pts * dy
-        sigmas_f[:, 1] = sigma_points[:, 1] + sin_pts * dx + cos_pts * dy
-        sigmas_f[:, 2] = np.arctan2(np.sin(pts + dtheta), np.cos(pts + dtheta))
+        self.sigma[:, 0] = self.sigma[:, 0] + cos_pts * dx - sin_pts * dy
+        self.sigma[:, 1] = self.sigma[:, 1] + sin_pts * dx + cos_pts * dy
+        self.sigma[:, 2] = np.arctan2(np.sin(pts + dtheta), np.cos(pts + dtheta))
         
         # landmark columns unchanged 
 
         # --- Weighted mean ---
-        self.x = (sigmas_f.T @ w_m).reshape(-1, 1)        # linear mean
-        self.x[2, 0] = math.atan2(w_m @ np.sin(sigmas_f[:, 2]), w_m @ np.cos(sigmas_f[:, 2]))
+        self.x = (self.sigma.T @ self.w_m).reshape(-1, 1)        # linear mean
+        self.x[2, 0] = math.atan2(self.w_m @ np.sin(self.sigma[:, 2]), self.w_m @ np.cos(self.sigma[:, 2]))
 
         # --- Weighted covariance ---
-        diff = sigmas_f - self.x.T                         # (2n+1, n_state)
+        diff = self.sigma - self.x.T                         # (2n+1, n_state)
         diff[:, 2] = np.arctan2(np.sin(diff[:, 2]),np.cos(diff[:, 2]))
-        self.P = (diff.T * w_c) @ diff + Q_model
+        self.P = (diff.T * self.w_c) @ diff + Q_model
         self.P = 0.5 * (self.P + self.P.T) + 1e-9 * np.eye(n)  # stability
 
         # --- Cache cho scan_cb ---
-        self.w_m, self.w_c, self.sigma = w_m, w_c, sigmas_f
 
         # =========================
         # 2. UPDATE STEP
@@ -621,7 +660,10 @@ class UKFSLAM(Node):
 
         # --- 3. Cộng nhiễu đo lường R ---
         # R = np.kron(np.eye(m), self.R_z[0])
-        R = block_diag(*self.R_z)
+        R = np.zeros((2*m, 2*m))
+
+        for i, Ri in enumerate(self.R_z):
+            R[2*i:2*i+2, 2*i:2*i+2] = Ri
         S = S + R
 
         # --- 4. Tính toán Kalman Gain và Cập nhật ---
@@ -793,16 +835,17 @@ class UKFSLAM(Node):
             for point_cluster in segment_clusters
         ]
 
-        # lấy kết quả
+        all_features = []
+
         for future in futures:
             features = future.result()
             if features is not None and len(features) > 0:
-                clusters.append(features)
+                all_features.extend(features)
 
-        if len(clusters) == 0:
+        if len(all_features) == 0:
             return []
 
-        curv_pts = np.vstack(clusters)
+        curv_pts = np.asarray(all_features)
 
         if len(curv_pts) < 1:
             return []
@@ -968,7 +1011,10 @@ class UKFSLAM(Node):
         # curvature
         curvature = lambda_min / (trace + 1e-9)
 
-        curvature_full = np.pad(curvature, (k, k), mode='edge')
+        curvature_full = np.empty(N)
+        curvature_full[:k] = curvature[0]
+        curvature_full[k:-k] = curvature
+        curvature_full[-k:] = curvature[-1]
 
         return curvature_full
 
@@ -1057,122 +1103,139 @@ class UKFSLAM(Node):
     # 5. DATA ASSOCIATION
     # =========================
     def association(self, features, Z_pred_full, S_full, chi2_threshold=5.99):
-        """
-        features: list of (z_obs, R_obs) từ extract_features_from_scan
-        Z_pred_full: Vector (2*M,) dự báo [r1, b1, r2, b2...]
-        S_full: Ma trận (2*M, 2*M) hiệp phương sai dự báo
-        """
+
         self.z = []
         self.R_z = []
         self.z_lm_ids = []
         self.new_features = []
+
         self.lm_observed = np.zeros(self.num_landmarks, dtype=bool)
 
+        # =========================
+        # NO LANDMARK
+        # =========================
         if self.num_landmarks == 0:
-            for z_obs, R_obs in features:
-                self.new_features.append((z_obs, R_obs))
+            self.new_features.extend(features)
             return
 
-        # # 1. Trích xuất các khối đường chéo S cho từng Landmark
-        # # S_diag_blocks[lm_id] = ma trận 2x2
-        # # S_diag_blocks = [
-        # #     S_full[2*j : 2*j+2, 2*j : 2*j+2] for j in range(self.num_landmarks)
-        # # ]
-
-        # # 2. Tính toán tất cả ứng viên tiềm năng (Mahalanobis)
-        # pairs = []  # (d2, feat_id, lm_id)
-
-        # for i, (z_obs, R_obs) in enumerate(features):
-        #     # --- reshape ---
-        #     # z_obs = z_obs.reshape(1, 2)   # (1,2)
-        #     # Z_pred = Z_pred_full.reshape(-1, 2)   # (M,2)
-
-        #     # --- innovation ---
-        #     v = Z_pred_full.reshape(-1, 2) - z_obs   # (M,2)
-        #     v[:, 1] = (v[:, 1] + np.pi) % (2*np.pi) - np.pi
-
-        #     # gating thô
-        #     mask = (np.abs(v[:,0]) < 2.0) & (np.abs(v[:,1]) < np.pi/6)
-        #     valid_ids = np.where(mask)[0]
-
-        #     for lm_id in valid_ids:
-        #         S_total = S_full[2*lm_id:2*lm_id+2, 2*lm_id:2*lm_id+2] + R_obs
-        #         try:
-        #             d2 = v[lm_id].T @ np.linalg.solve(S_total, v[lm_id])
-        #             if d2 < chi2_threshold:
-        #                 pairs.append((d2, i, lm_id))
-        #         except np.linalg.LinAlgError:
-        #             continue
-
         M = self.num_landmarks
-        
-        Z_pred = Z_pred_full.reshape(M, 2)
 
-        # --- lấy block S 2x2 cho từng landmark ---
-        S_blocks = S_full.reshape(M, 2, M, 2).transpose(0,2,1,3)
-        S_blocks = S_blocks[np.arange(M), np.arange(M)]   # (M,2,2)
+        # =========================
+        # RESHAPE PREDICTION
+        # =========================
+        Z_pred = Z_pred_full.reshape(M, 2)
+        S_blocks = S_full.reshape(M, 2, M, 2)
+        S_blocks = S_blocks.transpose(0, 2, 1, 3)
+        S_blocks = S_blocks[np.arange(M), np.arange(M)]
 
         pairs = []
 
-        for i, (z_obs, R_obs) in enumerate(features):
+        for feat_id, (z_obs, R_obs) in enumerate(features):
 
-            # --- innovation vectorized ---
-            v = Z_pred - z_obs   # (M,2)
-            v[:,1] = np.arctan2(np.sin(v[:,1]), np.cos(v[:,1]))
+            # ---------------------------------
+            # Innovation
+            # ---------------------------------
+            v = Z_pred - z_obs
 
-            # --- gating thô ---
-            mask = (np.abs(v[:,0]) < self.range_raw_th) & (np.abs(v[:,1]) < self.angle_raw_th)
+            v[:, 1] = (
+                v[:, 1] + np.pi
+            ) % (2.0 * np.pi) - np.pi
+
+            # ---------------------------------
+            # Raw gating
+            # ---------------------------------
+            mask = (
+                (np.abs(v[:, 0]) < self.range_raw_th) &
+                (np.abs(v[:, 1]) < self.angle_raw_th)
+            )
+
             valid_ids = np.where(mask)[0]
 
             if len(valid_ids) == 0:
                 continue
 
-            v_valid = v[valid_ids]                      # (k,2)
-            S_valid = S_blocks[valid_ids] + R_obs       # (k,2,2)
+            v_valid = v[valid_ids]
+            S_valid = S_blocks[valid_ids] + R_obs
 
-            # --- tính Mahalanobis vectorized ---
-            # try:
-            #     S_inv = np.linalg.inv(S_valid)   # (k,2,2)
-            # except np.linalg.LinAlgError:
-            #     continue
+            # ---------------------------------
+            # Mahalanobis
+            # ---------------------------------
+            S_inv = inv2x2_batch(S_valid)
 
-            d2 = np.einsum('ij,ij->i',
-               v_valid,
-               np.linalg.solve(S_valid, v_valid[:,:,None]).squeeze(-1))
+            d2 = np.einsum(
+                'ij,ijk,ik->i',
+                v_valid,
+                S_inv,
+                v_valid
+            )
 
-            # --- filter chi2 ---
+            # ---------------------------------
+            # Chi-square gating
+            # ---------------------------------
             good = d2 < chi2_threshold
 
-            for idx, lm_id in enumerate(valid_ids[good]):
-                pairs.append((d2[good][idx], i, lm_id))
+            if not np.any(good):
+                continue
 
-        # 3. Chọn cặp khớp One-to-One (GNN)
+            good_ids = valid_ids[good]
+            good_d2  = d2[good]
+
+            # ---------------------------------
+            # Save candidates
+            # ---------------------------------
+            for k in range(len(good_ids)):
+
+                pairs.append((
+                    float(good_d2[k]),
+                    int(feat_id),
+                    int(good_ids[k])
+                ))
+
+        # =========================
+        # NO MATCH
+        # =========================
+        if len(pairs) == 0:
+            self.new_features.extend(features)
+            return
+
+        # =========================
+        # GLOBAL NEAREST NEIGHBOR
+        # =========================
         pairs.sort(key=lambda x: x[0])
 
         used_feat = set()
         used_lm   = set()
-        associations = {}
 
-        for d2, i, lm_id in pairs:
-            if i not in used_feat and lm_id not in used_lm:
-                associations[i] = lm_id
-                used_feat.add(i)
-                used_lm.add(lm_id)
+        # =========================
+        # ASSIGN
+        # =========================
+        for d2, feat_id, lm_id in pairs:
 
-        # 4. Phân loại Feature thành Landmark cũ hoặc Feature mới
-        for i, (z_obs, R_obs) in enumerate(features):
-            if i in associations:
-                lm_id = associations[i]
-                self.z.append(z_obs)
-                self.R_z.append(R_obs)
-                self.z_lm_ids.append(lm_id)
-                
-                self.lm_observed[lm_id] = True
-                self.landmark_score[lm_id] += 2.0
-            else:
-                # Trả về cả z và R để khởi tạo landmark mới chính xác hơn
-                self.new_features.append((z_obs, R_obs))
+            if feat_id in used_feat:
+                continue
 
+            if lm_id in used_lm:
+                continue
+
+            z_obs, R_obs = features[feat_id]
+
+            self.z.append(z_obs)
+            self.R_z.append(R_obs)
+            self.z_lm_ids.append(lm_id)
+
+            self.lm_observed[lm_id] = True
+            self.landmark_score[lm_id] += 2.0
+
+            used_feat.add(feat_id)
+            used_lm.add(lm_id)
+
+        # =========================
+        # NEW FEATURES
+        # =========================
+        for feat_id, feat in enumerate(features):
+
+            if feat_id not in used_feat:
+                self.new_features.append(feat)
 
 def main(args=None):
     rclpy.init(args=args)
