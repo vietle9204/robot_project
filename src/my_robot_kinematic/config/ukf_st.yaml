@@ -59,8 +59,8 @@ state_estimate_UKF:
       w:
         a1: 10.0
         a2: 10.0
-        errors_threshold: 0.001
-        innovation_threshold: 0.001
+        errors_threshold: 0.0016
+        innovation_threshold: 0.0016
 
       R_enc_scale: 0.005
       R_imu_scale: 0.005
