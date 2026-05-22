@@ -27,7 +27,7 @@ ukf_slam:
       min_point: 17
 
     extract_curvature_points:
-      neib_number: 6
+      neib_number: 5
       curvature_threshold: 0.185
       range_min: 0.5
       range_max: 10.0

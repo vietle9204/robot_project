@@ -53,12 +53,12 @@ state_estimate_UKF:
     adaptive:
       v:
         a1: 5.0
-        a2: 10.0
+        a2: 5.0
         errors_threshold: 0.002
         innovation_threshold: 0.002
       w:
         a1: 5.0
-        a2: 10.0
+        a2: 5.0
         errors_threshold: 0.002
         innovation_threshold: 0.002
 
