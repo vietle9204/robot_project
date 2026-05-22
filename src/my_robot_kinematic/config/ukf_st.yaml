@@ -41,14 +41,14 @@ state_estimate_UKF:
 
     imu:
       pos_offset: [0.0]       # yaw
-      vel_offset: [0.0052]       # w
+      vel_offset: [0.0055]       # w
 
       R:  [0.01, 0.00288]
 
     mag:
       pos_offset: [0.0]       # yaw
 
-      R:  [0.03]
+      R:  [0.01]
 
     adaptive:
       v:
