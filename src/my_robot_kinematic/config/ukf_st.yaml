@@ -31,7 +31,7 @@ state_estimate_UKF:
       Q:  [0.0001, 0.0000,
            0.0000, 0.0001]
 
-      motion_threshold: 0.05
+      motion_threshold: 0.04
 
     encoder:
       pos_offset: [0.0, 0.0, 0.0]
@@ -48,20 +48,20 @@ state_estimate_UKF:
     mag:
       pos_offset: [0.0]       # yaw
 
-      R:  [0.1]
+      R:  [0.03]
 
     adaptive:
       v:
-        a1: 10.0
+        a1: 5.0
         a2: 10.0
-        errors_threshold: 0.0016
-        innovation_threshold: 0.0016
+        errors_threshold: 0.002
+        innovation_threshold: 0.002
       w:
-        a1: 10.0
+        a1: 5.0
         a2: 10.0
-        errors_threshold: 0.0016
-        innovation_threshold: 0.0016
+        errors_threshold: 0.002
+        innovation_threshold: 0.002
 
-      R_enc_scale: 0.005
-      R_imu_scale: 0.005
+      R_enc_scale: 0.01
+      R_imu_scale: 0.01
 
