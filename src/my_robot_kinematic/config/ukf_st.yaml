@@ -13,7 +13,7 @@ state_estimate_UKF:
 
 
     sigmapoint:
-      alpha: 0.15
+      alpha: 0.2
       beta: 2.0
       kappa: 0.0
 
@@ -31,19 +31,19 @@ state_estimate_UKF:
       Q:  [0.0001, 0.0000,
            0.0000, 0.0001]
 
-      motion_threshold: 0.04
+      motion_threshold: 0.02
 
     encoder:
       pos_offset: [0.0, 0.0, 0.0]
       vel_offset: [0.0, 0.0]
 
-      R:  [10.0, 10.0, 0.01, 0.00001, 0.0011]
+      R:  [10.0, 10.0, 0.001, 0.00001, 0.0011]
 
     imu:
       pos_offset: [0.0]       # yaw
       vel_offset: [0.0055]       # w
 
-      R:  [0.01, 0.00288]
+      R:  [0.001, 0.00288]
 
     mag:
       pos_offset: [0.0]       # yaw
@@ -52,13 +52,13 @@ state_estimate_UKF:
 
     adaptive:
       v:
-        a1: 5.0
-        a2: 5.0
+        a1: 0.75
+        a2: 0.75
         errors_threshold: 0.002
         innovation_threshold: 0.002
       w:
-        a1: 5.0
-        a2: 5.0
+        a1: 0.75
+        a2: 0.75
         errors_threshold: 0.002
         innovation_threshold: 0.002
 

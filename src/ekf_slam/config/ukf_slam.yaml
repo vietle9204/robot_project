@@ -13,10 +13,10 @@ ukf_slam:
              0.000, 0.000, 0.0000001]
 
     Q_scale:
-      a: 0.01
-      b: 0.01
+      a: 0.001
+      b: 0.001
 
-    R: [0.0025, 0.0036]
+    R: [0.0025, 0.0025]
 
     max_landmark: 150
     time_syns_period: 0.02
@@ -28,7 +28,7 @@ ukf_slam:
 
     extract_curvature_points:
       neib_number: 5
-      curvature_threshold: 0.185
+      curvature_threshold: 0.18
       range_min: 0.5
       range_max: 10.0
     

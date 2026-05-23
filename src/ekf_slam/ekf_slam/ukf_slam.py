@@ -343,7 +343,7 @@ class UKFSLAM(Node):
         delta_robot = R @ np.array([[dx], [dy], [dtheta]])
 
         if abs(delta_robot[0,0]) < 0.001 and abs(delta_robot[1,0]) < 0.001 and abs(delta_robot[2,0]) < 0.001:
-            delta_robot[0,0], delta_robot[1,0], delta_robot[2,0] = 1e-15, 1e-15, 1e-15
+            delta_robot[0,0], delta_robot[1,0], delta_robot[2,0] = 0.0, 0.0, 0.0
         
         # Q_incremental: 
         dist = math.sqrt(delta_robot[0,0]**2 + delta_robot[1,0]**2)
