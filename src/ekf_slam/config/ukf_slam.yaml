@@ -19,16 +19,16 @@ ukf_slam:
     R: [0.0025, 0.0025]
 
     max_landmark: 150
-    time_syns_period: 0.02
+    time_syns_period: 0.018
     new_landmark_corv_base: 0.0016
 
     segment_scan:
       range_thres: 0.2
-      min_point: 17
+      min_point: 13
 
     extract_curvature_points:
       neib_number: 5
-      curvature_threshold: 0.18
+      curvature_threshold: 0.185
       range_min: 0.5
       range_max: 10.0
     
