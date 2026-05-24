@@ -15,11 +15,11 @@ Hệ thống định vị và xây dựng bản đồ cho robot di động dạn
 [IMU]──────┤──► state_estimate_UKF2 ──► /odometry/data ──┐
 [Mag]──────┘                                              │
                                                           ▼
-[LaserScan] ──────────────────────────────► ukf_slam ──► /ekf_slam/pose
+[LaserScan] ──────────────────────────────► ukf_slam ──► /ukf_slam/pose
                                                   │
-                                                  └──► /ekf_slam/map
+                                                  └──► /ukf_slam/map
                                                   │
-                                            map_draw ──► /ekf_slam/binary_map
+                                            map_draw ──► /ukf_slam/binary_map
                                             map_to_tf ──► TF: map → odom
 ```
 
