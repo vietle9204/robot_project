@@ -484,15 +484,15 @@ class state_estimate(Node):
         self.z[7,0] = mag_yaw 
 
         imu_R = self.imu_R.copy()
-        imu_R[0] = imu_R[0] + (self.R_imu_scale*(self.imu_theta))**2 + 0.0025*(self.x_k[2,0] - angle_normalize(self.imu_theta))**2
+        imu_R[0] = imu_R[0] + (self.R_imu_scale*(self.imu_theta))**2 + 0.0025*(self.x_k[2,0] - angle_normalize(self.imu_theta))**2 - 0.0009
         # if not imu_flag:
         #     imu_R[0] = imu_R[0] + 0.0001
         enc_R = self.enc_R.copy()
         pos_err = (self.x_k[0,0] - enc_odom[0,0])**2+(self.x_k[1,0] - enc_odom[1,0])**2
         enc_range =  (enc_odom[0,0]**2 + enc_odom[1,0]**2)
-        enc_R[0] = enc_R[0] + (self.R_enc_scale**2)*enc_range + 0.0025*pos_err
-        enc_R[1] = enc_R[1] + (self.R_enc_scale**2)*enc_range + 0.0025*pos_err
-        enc_R[2] = enc_R[2] + (self.R_enc_scale*(self.enc_odom[2,0]))**2 + 0.0025*(self.x_k[2,0] - angle_normalize(self.enc_odom[2,0]))**2
+        enc_R[0] = enc_R[0] + (self.R_enc_scale**2)*enc_range + 0.0025*pos_err-0.001
+        enc_R[1] = enc_R[1] + (self.R_enc_scale**2)*enc_range + 0.0025*pos_err-0.001
+        enc_R[2] = enc_R[2] + (self.R_enc_scale*(self.enc_odom[2,0]))**2 + 0.0025*(self.x_k[2,0] - angle_normalize(self.enc_odom[2,0]))**2 - 0.0009
         #     enc_R[0] = enc_R[0] + 0.0001
         #     enc_R[1] = enc_R[1] + 0.0001
         #     enc_R[2] = enc_R[2] + 0.0001

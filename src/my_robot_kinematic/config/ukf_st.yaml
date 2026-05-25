@@ -43,7 +43,7 @@ state_estimate_UKF:
       pos_offset: [0.0]       # yaw
       vel_offset: [0.0055]       # w
 
-      R:  [0.001, 0.00288]
+      R:  [0.001, 0.0018]
 
     mag:
       pos_offset: [0.0]       # yaw
@@ -52,15 +52,15 @@ state_estimate_UKF:
 
     adaptive:
       v:
-        a1: 0.75
-        a2: 0.75
-        errors_threshold: 0.002
-        innovation_threshold: 0.002
+        a1: 1.0
+        a2: 2.0
+        errors_threshold: 0.0012
+        innovation_threshold: 0.0024
       w:
-        a1: 0.75
-        a2: 0.75
-        errors_threshold: 0.002
-        innovation_threshold: 0.002
+        a1: 1.0
+        a2: 2.0
+        errors_threshold: 0.0012
+        innovation_threshold: 0.0024
 
       R_enc_scale: 0.01
       R_imu_scale: 0.01
