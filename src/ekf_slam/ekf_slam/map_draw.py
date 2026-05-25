@@ -253,7 +253,7 @@ class OccupancyMapping(Node):
         msg = OccupancyGrid()
 
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = "map"
+        msg.header.frame_id = "ukf_slam_map"
 
         msg.info.resolution = self.resolution
         msg.info.width = self.width
