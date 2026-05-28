@@ -59,7 +59,7 @@ class MapToOdom(Node):
 
         self.declare_parameter(
             "map_frame",
-            "ukf_slam_map"
+            "map"
         )
 
         self.declare_parameter(
