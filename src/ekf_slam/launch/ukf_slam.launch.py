@@ -30,12 +30,12 @@ def generate_launch_description():
             output='screen',
         ),
 
-        # Node(
-        #     package='ekf_slam',
-        #     executable='map_to_tf',
-        #     name='map_to_tf',
-        #     output='screen',
-        # ),
+        Node(
+            package='ekf_slam',
+            executable='map_to_tf',
+            name='map_to_tf',
+            output='screen',
+        ),
 
         Node(
             package='ekf_slam',
