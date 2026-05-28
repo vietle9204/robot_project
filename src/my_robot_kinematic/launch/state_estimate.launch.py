@@ -57,16 +57,16 @@ def generate_launch_description():
         ),
 
         # ===== Odom to TF =====
-        # Node(
-        #     package='odom_to_tf',
-        #     executable='odom_to_tf',
-        #     name='odom_to_tf',
-        #     output='screen',
-        #     parameters=[config_file_path,
-        #         {'use_sim_time': use_sim_time}
-        #     ],
-        #     condition=IfCondition(publish_tf)
-        # ),
+        Node(
+            package='odom_to_tf',
+            executable='odom_to_tf',
+            name='odom_to_tf',
+            output='screen',
+            parameters=[config_file_path,
+                {'use_sim_time': use_sim_time}
+            ],
+            condition=IfCondition(publish_tf)
+        ),
 
         # ===== IMU Filter =====
         Node(
