@@ -13,6 +13,7 @@ import heapq
 import threading
 import math
 import cv2
+import time
 
 
 qos = QoSProfile(
@@ -29,10 +30,12 @@ class AStarNode(Node):
         self.declare_parameter('robot_radius', 0.20)
         self.declare_parameter('occupied_threshold', 65)
         self.declare_parameter('allow_unknown', False)
+        self.declare_parameter('replan_interval', 0.5)
 
         self.robot_radius = float(self.get_parameter('robot_radius').value)
         self.occupied_threshold = int(self.get_parameter('occupied_threshold').value)
         self.allow_unknown = bool(self.get_parameter('allow_unknown').value)
+        self.replan_interval = float(self.get_parameter('replan_interval').value)
 
         self.path_pub = self.create_publisher(Path, '/astar_path', 10)
 
@@ -67,6 +70,10 @@ class AStarNode(Node):
         self.rows = 0
         self.cols = 0
 
+        self.current_path_grid = None
+
+        self.last_replan_time = 0.0
+
         self._plan_lock = threading.Lock()
         self._map_lock = threading.Lock()
 
@@ -74,7 +81,6 @@ class AStarNode(Node):
 
     def map_callback(self, msg: OccupancyGrid):
         resolution = msg.info.resolution
-
         origin = [
             msg.info.origin.position.x,
             msg.info.origin.position.y,
@@ -104,6 +110,8 @@ class AStarNode(Node):
         mask = (inflated == 1) & (grid == 0)
         grid[mask] = 1
 
+        need_replan = False
+
         with self._map_lock:
             self.grid = grid
             self.resolution = resolution
@@ -112,10 +120,26 @@ class AStarNode(Node):
             self.rows = rows
             self.map_received = True
 
-        self.get_logger().info(
-            f"Map updated: rows={rows}, cols={cols}, "
-            f"res={resolution:.3f}, inflate_cells={inflate_cells}"
-        )
+            if self.current_path_grid is not None:
+                if self.is_path_blocked(self.current_path_grid, grid, cols, rows):
+                    need_replan = True
+
+        if need_replan:
+            now = time.time()
+
+            if now - self.last_replan_time >= self.replan_interval:
+                self.last_replan_time = now
+
+                self.get_logger().warn(
+                    "Current path blocked by updated SLAM map -> replanning."
+                )
+
+                if self.start is not None and self.goal is not None:
+                    threading.Thread(
+                        target=self._plan_thread,
+                        daemon=True
+                    ).start()
+
 
     def pose_callback(self, msg: PoseWithCovarianceStamped):
         self.start = (
@@ -129,15 +153,20 @@ class AStarNode(Node):
             msg.pose.position.y
         )
 
+        self.current_path_grid = None
+
         self.get_logger().info(
             f"Received goal world: x={self.goal[0]:.3f}, y={self.goal[1]:.3f}"
         )
 
-        threading.Thread(target=self._plan_thread, daemon=True).start()
+        threading.Thread(
+            target=self._plan_thread,
+            daemon=True
+        ).start()
 
     def _plan_thread(self):
         if not self._plan_lock.acquire(blocking=False):
-            self.get_logger().warn("Planner is busy. Skip this goal.")
+            self.get_logger().warn("Planner is busy. Skip this planning request.")
             return
 
         try:
@@ -148,12 +177,15 @@ class AStarNode(Node):
     def world_to_grid(self, x, y, rows, resolution, origin):
         gx = int((x - origin[0]) / resolution)
         gy = int((y - origin[1]) / resolution)
+
         gy = rows - gy - 1
+
         return gx, gy
 
     def grid_to_world(self, gx, gy, rows, resolution, origin):
         x = gx * resolution + origin[0] + resolution / 2.0
         y = (rows - gy - 1) * resolution + origin[1] + resolution / 2.0
+
         return x, y
 
     def try_plan(self):
@@ -229,7 +261,12 @@ class AStarNode(Node):
 
         if path_grid is None:
             self.get_logger().warn("No path found.")
+            self.current_path_grid = None
+            self.clear_path()
             return
+
+        with self._map_lock:
+            self.current_path_grid = path_grid
 
         self.publish_path(path_grid, rows, resolution, origin)
 
@@ -239,7 +276,21 @@ class AStarNode(Node):
     def is_free(self, grid, x, y):
         if self.allow_unknown:
             return grid[y, x] != 1
+
         return grid[y, x] == 0
+
+    def is_path_blocked(self, path_grid, grid, cols, rows):
+        if path_grid is None or len(path_grid) == 0:
+            return False
+
+        for x, y in path_grid:
+            if not self.is_inside(x, y, cols, rows):
+                return True
+
+            if not self.is_free(grid, x, y):
+                return True
+
+        return False
 
     def a_star(self, grid, start, goal, rows, cols):
         sx, sy = start
@@ -289,6 +340,7 @@ class AStarNode(Node):
                 if dx != 0 and dy != 0:
                     if not self.is_free(grid, cx + dx, cy):
                         continue
+
                     if not self.is_free(grid, cx, cy + dy):
                         continue
 
@@ -313,6 +365,7 @@ class AStarNode(Node):
     def octile_heuristic(self, a, b):
         dx = abs(a[0] - b[0])
         dy = abs(a[1] - b[1])
+
         return (dx + dy) + (math.sqrt(2.0) - 2.0) * min(dx, dy)
 
     def reconstruct_path(self, came_from, current):
@@ -323,9 +376,23 @@ class AStarNode(Node):
             path.append(current)
 
         path.reverse()
+
         return path
 
+    def clear_path(self):
+        path_msg = Path()
+        path_msg.header.frame_id = "map"
+        path_msg.header.stamp = self.get_clock().now().to_msg()
+
+        self.path_pub.publish(path_msg)
+        self.get_logger().warn("Cleared /astar_path.")
+
     def publish_path(self, path_grid, rows, resolution, origin):
+        clear_msg = Path()
+        clear_msg.header.frame_id = "map"
+        clear_msg.header.stamp = self.get_clock().now().to_msg()
+        self.path_pub.publish(clear_msg)
+
         path_msg = Path()
         path_msg.header.frame_id = "map"
         path_msg.header.stamp = self.get_clock().now().to_msg()
@@ -358,7 +425,7 @@ class AStarNode(Node):
                 )
 
         self.path_pub.publish(path_msg)
-        self.get_logger().info("Published /astar_path.")
+        self.get_logger().info("Published new /astar_path.")
 
 
 def main(args=None):
