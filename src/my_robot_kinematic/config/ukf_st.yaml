@@ -48,7 +48,7 @@ state_estimate_UKF:
     mag:
       pos_offset: [0.0]       # yaw
 
-      R:  [0.0025]
+      R:  [0.01]
 
     adaptive:
       v:
